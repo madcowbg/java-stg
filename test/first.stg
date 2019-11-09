@@ -1,1 +1,1 @@
-zero = I 0;
+zero = CON(I 0);

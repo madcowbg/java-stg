@@ -6,4 +6,5 @@ foldl = FUN(f acc list ->
    });
 
 # lazy sum with a well-known space leak
-sum = FUN(list -> foldl plusInt zero list);
+sum = FUN(list -> foldl plusInt zero list)
+
