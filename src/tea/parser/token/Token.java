@@ -61,6 +61,16 @@ public interface Token {
         public boolean isEOF() {
             return true;
         }
+
+        @Override
+        public boolean isFunctionHeap() {
+            return false;
+        }
+
+        @Override
+        public boolean isRightArrow() {
+            return false;
+        }
     };
 
     boolean isConstructor();
@@ -86,4 +96,8 @@ public interface Token {
     boolean isEndOfBinding();
 
     boolean isEOF();
+
+    boolean isFunctionHeap();
+
+    boolean isRightArrow();
 }

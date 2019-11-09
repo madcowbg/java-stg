@@ -44,8 +44,9 @@ public class ParseTest {
     @DataProvider
     public static Object[][] readToGraph() throws IOException {
         return new Object[][]{
-                {lines("first.stg"), "[B<V<zero>, CONS( T[I]  A<0>>]"},
-                {lines("no_eb.stg"), "[B<V<zero>, CONS( T[I]  A<0>>, B<V<fl>, CONS( T[I]  A<-50>>, B<V<one>, CONS( T[I]  A<1>>]"},
+                {lines("first.stg"), "[B<V<zero>, CONS< T[I]  A<0>>>]"},
+                {lines("no_eb.stg"), "[B<V<zero>, CONS< T[I]  A<0>>>, B<V<fl>, CONS< T[I]  A<-50>>>, B<V<one>, CONS< T[I]  A<1>>>]"},
+                {lines("fun.stg"), "[B<V<zero>, CONS< T[I]  A<0>>>, B<V<f>, FUN< V<var1> V<var2> V<var3> -> A<0>>>]"},
 //                {lines("mid.stg"), ""},
 //                {lines("large.stg"), ""},
         };

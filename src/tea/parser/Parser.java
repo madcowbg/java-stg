@@ -75,10 +75,8 @@ public class Parser {
 
     /**
      * Heap objects
-     * CONS(C x y ...) - saturated constructor
-     *
-     * @param ptr
-     * @return
+     * CONS(C x y ...)        - saturated constructor
+     * FUN(x1 ... xn -> e)    - Function (arity = n >= 1)
      */
     private static HeapObject readHeapObject(TokenPointer ptr) {
         if (ptr.current().isConstructorHeap()) {
@@ -86,8 +84,45 @@ public class Parser {
             var cons = readSaturatedConstructor(ptr);
             ptr.advance(); // skip )
             return cons;
+        } else if (ptr.current().isFunctionHeap()) {
+            ptr.advance(); // skip FUN(
+            var fun = readFunction(ptr);
+            ptr.advance(); // skip )
+            return fun;
         } else {
             throw new RuntimeException(ptr.current() + " is not a valid heap object type!"); // FIXME add...
+        }
+    }
+
+    private static Func readFunction(TokenPointer ptr) {
+        List<Variable> vars = new ArrayList<>();
+
+        while (!ptr.current().isRightArrow()) {
+            if (!ptr.current().isVariableName()) {
+                throw new RuntimeException(ptr.current() + " is not a valid variable!");
+            }
+            vars.add(new Variable(ptr.current()));
+            ptr.advance();
+        }
+
+        ptr.advance(); // skip `->`
+
+        var e = readExpression(ptr);
+
+        if (!ptr.current().isEndBrace()) {
+            throw new RuntimeException(ptr.current() + " is not `)`!");
+        }
+
+        return new Func(vars, e);
+    }
+
+    private static Expr readExpression(TokenPointer ptr) {
+        if (ptr.current().isAtom()) {
+            var atom = new Atom(ptr.current());
+            ptr.advance();
+            return atom;
+        } else { // FIXME add more expression types
+            throw new RuntimeException(ptr.current()  + "is not an expression!!!");
         }
     }
 
@@ -145,7 +180,7 @@ public class Parser {
         }
     }
 
-    private static class Atom {
+    private static class Atom implements Expr {
         private final int value; // fixme other atom types...
 
         public Atom(Token current) {
@@ -173,7 +208,25 @@ public class Parser {
 
         @Override
         public String toString() {
-            return "CONS(" + " " + c + " " + params.stream().map(Atom::toString).collect(Collectors.joining(" ", " ", ""));
+            return "CONS<" + " " + c + " " + params.stream().map(Atom::toString).collect(Collectors.joining(" ", " ", "")) + ">";
         }
+    }
+
+    private static class Func extends HeapObject {
+        private final List<Variable> vars;
+        private final Expr body;
+
+        public Func(List<Variable> vars, Expr body) {
+            this.vars = vars;
+            this.body = body;
+        }
+
+        @Override
+        public String toString() {
+            return "FUN<" + vars.stream().map(Variable::toString).collect(Collectors.joining(" ", " ", "")) + " -> " + body.toString() + ">";
+        }
+    }
+
+    private interface Expr {
     }
 }

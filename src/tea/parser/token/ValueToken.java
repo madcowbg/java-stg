@@ -32,7 +32,7 @@ public class ValueToken implements Token {
 
     @Override
     public boolean isVariableName() {
-        return !isKeyword() && !isConstructor() && value.matches("^[a-zA-Z_]*$");
+        return !isKeyword() && !isConstructor() && value.matches("^[a-zA-Z_][a-zA-Z_0-9]*$");
     }
 
     @Override
@@ -83,5 +83,15 @@ public class ValueToken implements Token {
     @Override
     public boolean isEOF() {
         return false;
+    }
+
+    @Override
+    public boolean isFunctionHeap() {
+        return value.equals("FUN(");
+    }
+
+    @Override
+    public boolean isRightArrow() {
+        return value.equals("->");
     }
 }
