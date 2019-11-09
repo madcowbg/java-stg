@@ -1,0 +1,2 @@
+asd = CON(I 1);
+f = CON(I asd)

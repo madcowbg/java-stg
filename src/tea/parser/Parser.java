@@ -10,6 +10,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static tea.parser.token.Token.*;
+
 public class Parser {
 
     public static String[] tokenize(String[] lines) {
@@ -65,13 +67,13 @@ public class Parser {
      * FUN(x1 ... xn -> e)    - Function (arity = n >= 1)
      */
     private static HeapObject readHeapObject(TokenPointer ptr) {
-        if (ptr.is("CON(")) {
-            ptr.skipAfterCheck("CON(");
+        if (ptr.is(KWD_CON)) {
+            ptr.skipAfterCheck(KWD_CON);
             var cons = readSaturatedConstructor(ptr);
             ptr.skipAfterCheck(")");
             return cons;
-        } else if (ptr.is("FUN(")) {
-            ptr.skipAfterCheck("FUN(");
+        } else if (ptr.is(Token.KWD_FUN)) {
+            ptr.skipAfterCheck(Token.KWD_FUN);
             var fun = readFunction(ptr);
             ptr.skipAfterCheck(")");
             return fun;
@@ -102,8 +104,8 @@ public class Parser {
         if (ptr.isAtom()) {
             var atom = readAtom(ptr);
             return atom;
-        } else if (ptr.is("case")) {
-            ptr.skipAfterCheck("case");
+        } else if (ptr.is(KWD_CASE)) {
+            ptr.skipAfterCheck(KWD_CASE);
             return readCase(ptr);
         } else {
             ptr.fail(" is not an expression!!!");
@@ -114,7 +116,7 @@ public class Parser {
     private static Case readCase(TokenPointer ptr) {
         var e = readExpression(ptr);
 
-        ptr.skipAfterCheck("of");
+        ptr.skipAfterCheck(KWD_OF);
         ptr.skipAfterCheck("{");
 
         var alts = new ArrayList<Alternative>();
@@ -177,7 +179,7 @@ public class Parser {
 
         List<Atom> atoms = new ArrayList<>();
         while (!ptr.is(")")) {
-            ptr.checkCurrent(Token::isAtom, " is not a an atom!");
+            ptr.checkCurrent(Token::isAtom, " is not an atom!");
 
             atoms.add(readAtom(ptr));
         }

@@ -9,10 +9,16 @@ public class Token {
             "I", Function.identity()
     );
 
+    public static final String KWD_CON = "CON(";
+    public static final String KWD_FUN = "FUN(";
+    public static final String KWD_CASE = "case";
+    public static final String KWD_OF = "of";
+
     private static final Map<String, Function> KEYWORDS = Map.of(
-            "CONS(", Function.identity(),
-            "FUN(", Function.identity(),
-            "case", Function.identity()
+            KWD_CON, Function.identity(),
+            KWD_FUN, Function.identity(),
+            KWD_CASE, Function.identity(),
+            KWD_OF, Function.identity()
     );
 
     public final String text;

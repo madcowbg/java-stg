@@ -48,6 +48,7 @@ public class ParseTest {
                 {lines("no_eb.stg"), "[B<V<zero>, CONS< T[I]  Lit<0>>>, B<V<fl>, CONS< T[I]  Lit<-50>>>, B<V<one>, CONS< T[I]  Lit<1>>>]"},
                 {lines("fun.stg"), "[B<V<zero>, CONS< T[I]  Lit<0>>>, B<V<f>, FUN< V<var1> V<var2> V<var3> -> Lit<0>>>]"},
                 {lines("fact.stg"), "[B<V<fact_dummy>, FUN< V<val> -> case <V<val>, Alts<DC<T[I] V<sth> -> V<other>>;Def<V<x> -> Lit<1>>>>>>]"},
+                {lines("constructor_cases.stg"), "[B<V<asd>, CONS< T[I]  Lit<1>>>, B<V<f>, CONS< T[I]  V<asd>>>]"},
 //                {lines("large.stg"), ""},
         };
     }
@@ -66,5 +67,18 @@ public class ParseTest {
         try (var reader = resourceStream(path)) {
             return reader.lines().toArray(String[]::new);
         }
+    }
+
+    @DataProvider
+    public static Object[][] borderCaseFails() throws IOException {
+        return new Object[][]{
+                {lines("border_cases/kwd_instd_var.stg")},
+                {lines("border_cases/kwd_instd_lit.stg")},
+        };
+    }
+
+    @Test(dataProvider = "borderCaseFails", expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "T\\[of\\] is not.*")
+    void checkBorderCaseFails(String[] lines) {
+        Parser.readToGraph(lines);
     }
 }
