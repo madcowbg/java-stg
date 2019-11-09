@@ -1,4 +1,4 @@
-package tea;
+package tea.parser.token;
 
 import java.util.Map;
 import java.util.function.Function;

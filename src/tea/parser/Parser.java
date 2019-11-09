@@ -1,4 +1,7 @@
-package tea;
+package tea.parser;
+
+import tea.parser.token.Token;
+import tea.parser.token.TokenPointer;
 
 import java.util.ArrayList;
 import java.util.List;

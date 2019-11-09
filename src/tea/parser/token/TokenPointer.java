@@ -1,4 +1,4 @@
-package tea;
+package tea.parser.token;
 
 public class TokenPointer {
     private final String[] tokens;

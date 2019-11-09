@@ -1,7 +1,9 @@
+package parser;
+
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.Parser;
+import tea.parser.Parser;
 
 import java.io.BufferedReader;
 import java.io.IOException;

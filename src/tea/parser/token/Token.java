@@ -1,4 +1,4 @@
-package tea;
+package tea.parser.token;
 
 public interface Token {
     Token EOFToken = new Token() {
