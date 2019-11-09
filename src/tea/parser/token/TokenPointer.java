@@ -34,9 +34,13 @@ public class TokenPointer {
         advance();
     }
 
+    public void skipAfterCheck(String skip) {
+        skipAfterCheck(t -> t.text.equals(skip), ", but expected " + skip);
+    }
+
     @Override
     public String toString() {
-        return Stream.of(tokens).limit(ptr).map(t -> t.value).collect(Collectors.joining(" ", "", " ")) +  "<- [ptr=" + ptr + "]";
+        return Stream.of(tokens).limit(ptr).map(t -> t.text).collect(Collectors.joining(" ", "", " ")) +  "<- [ptr=" + ptr + "]";
     }
 
     public Token advanceAfterCheck(Predicate<Token> check, String msgOnFail) {
@@ -58,52 +62,38 @@ public class TokenPointer {
         }
     }
 
+    public void skipIf(String skip) {
+        if (!isEOF() && token().text.equals(skip)) {
+            advance();
+        }
+    }
+
+    public void checkCurrent(String skip) {
+        checkCurrent(t -> t.text.equals(skip), ", but expected " + skip);
+    }
+
     public void fail(String msg) {
         checkCurrent(ALWAYS_FAIL, msg);
-    }
-
-    public boolean isAtom() {
-        return checkToken(Token::isAtom);
-    }
-
-    public boolean isCase() {
-        return checkToken(Token::isCase);
-    }
-
-    public boolean isVariableName() {
-        return checkToken(Token::isVariableName);
-    }
-
-    public boolean isEndBrace() {
-        return checkToken(Token::isEndBrace);
-    }
-
-    public boolean isLitteral() {
-        return checkToken(Token::isLitteral);
     }
 
     public boolean isEOF() {
         return ptr >= tokens.length;
     }
 
-    public boolean isConstructorHeap() {
-        return checkToken(Token::isConstructorHeap);
+    public boolean is(String text) {
+        return checkToken(t -> t.text.equals(text));
     }
 
-    public boolean isFunctionHeap() {
-        return checkToken(Token::isFunctionHeap);
+    public boolean isAtom() {
+        return checkToken(Token::isAtom);
     }
 
-    public boolean isRightArrow() {
-        return checkToken(Token::isRightArrow);
+    public boolean isVariableName() {
+        return checkToken(Token::isVariableName);
     }
 
-    public boolean isClosedCurly() {
-        return checkToken(Token::isClosedCurly);
-    }
-
-    public boolean isSemicolon() {
-        return checkToken(Token::isSemicolon);
+    public boolean isLitteral() {
+        return checkToken(Token::isLitteral);
     }
 
     public boolean isConstructor() {

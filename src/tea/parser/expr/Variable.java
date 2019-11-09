@@ -6,7 +6,7 @@ public class Variable implements Atom {
     private final String name;
 
     public Variable(Token name) {
-        this.name = name.inner();
+        this.name = name.text;
     }
 
     @Override
