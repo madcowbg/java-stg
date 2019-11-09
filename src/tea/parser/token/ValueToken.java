@@ -10,7 +10,9 @@ public class ValueToken implements Token {
     );
 
     private static final Map<String, Function> KEYWORDS = Map.of(
-            "CONS", Function.identity()
+            "CONS(", Function.identity(),
+            "FUN(", Function.identity(),
+            "case", Function.identity()
     );
 
     private final String value;
@@ -51,7 +53,7 @@ public class ValueToken implements Token {
     }
 
     @Override
-    public int atomValue() {
+    public int litteralValue() {
         return Integer.parseInt(value);
     }
 
@@ -62,6 +64,12 @@ public class ValueToken implements Token {
 
     @Override
     public boolean isAtom() {
+        return isVariableName() || isLitteral();
+
+    }
+
+    @Override
+    public boolean isLitteral() {
         try {
             Integer.parseInt(value);
             return true;
@@ -77,6 +85,11 @@ public class ValueToken implements Token {
 
     @Override
     public boolean isEndOfBinding() {
+        return isSemicolon();
+    }
+
+    @Override
+    public boolean isSemicolon() {
         return value.equals(";");
     }
 
@@ -93,5 +106,30 @@ public class ValueToken implements Token {
     @Override
     public boolean isRightArrow() {
         return value.equals("->");
+    }
+
+    @Override
+    public boolean isCase() {
+        return value.equals("case");
+    }
+
+    @Override
+    public boolean isOf() {
+        return value.equals("of");
+    }
+
+    @Override
+    public boolean isOpenCurly() {
+        return value.equals("{");
+    }
+
+    @Override
+    public boolean isEndOfAlt() {
+        return isSemicolon() || isClosedCurly();
+    }
+
+    @Override
+    public boolean isClosedCurly() {
+        return value.equals("}");
     }
 }

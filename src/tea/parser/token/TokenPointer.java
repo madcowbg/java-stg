@@ -1,5 +1,8 @@
 package tea.parser.token;
 
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 public class TokenPointer {
     private final String[] tokens;
     private int ptr;
@@ -15,5 +18,10 @@ public class TokenPointer {
 
     public void advance() {
         ptr ++;
+    }
+
+    @Override
+    public String toString() {
+        return Stream.of(tokens).limit(ptr).collect(Collectors.joining(" ", "", " ")) +  "<- [ptr=" + ptr + "]";
     }
 }

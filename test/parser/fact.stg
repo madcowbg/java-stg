@@ -1,0 +1,4 @@
+fact_dummy = FUN(val -> case val of {
+    I sth -> other;
+    x -> 1
+})

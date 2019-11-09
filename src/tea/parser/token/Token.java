@@ -33,7 +33,7 @@ public interface Token {
         }
 
         @Override
-        public int atomValue() {
+        public int litteralValue() {
             throw new UnsupportedOperationException("can't get value of EOF token!");
         }
 
@@ -71,6 +71,41 @@ public interface Token {
         public boolean isRightArrow() {
             return false;
         }
+
+        @Override
+        public boolean isCase() {
+            return false;
+        }
+
+        @Override
+        public boolean isOf() {
+            return false;
+        }
+
+        @Override
+        public boolean isOpenCurly() {
+            return false;
+        }
+
+        @Override
+        public boolean isEndOfAlt() {
+            return false;
+        }
+
+        @Override
+        public boolean isClosedCurly() {
+            return false;
+        }
+
+        @Override
+        public boolean isLitteral() {
+            return false;
+        }
+
+        @Override
+        public boolean isSemicolon() {
+            return false;
+        }
     };
 
     boolean isConstructor();
@@ -85,7 +120,7 @@ public interface Token {
 
     boolean isConstructorHeap();
 
-    int atomValue();
+    int litteralValue();
 
     boolean isEndBrace();
 
@@ -100,4 +135,18 @@ public interface Token {
     boolean isFunctionHeap();
 
     boolean isRightArrow();
+
+    boolean isCase();
+
+    boolean isOf();
+
+    boolean isOpenCurly();
+
+    boolean isEndOfAlt();
+
+    boolean isClosedCurly();
+
+    boolean isLitteral();
+
+    boolean isSemicolon();
 }
