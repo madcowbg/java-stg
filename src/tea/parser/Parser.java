@@ -67,7 +67,12 @@ public class Parser {
      * FUN(x1 ... xn -> e)    - Function (arity = n >= 1)
      */
     private static HeapObject readHeapObject(TokenPointer ptr) {
-        if (ptr.is(KWD_CON)) {
+        if (ptr.is(KWD_THUNK)) {
+            ptr.skipAfterCheck(KWD_THUNK);
+            var expr = readExpression(ptr);
+            ptr.skipAfterCheck(")");
+            return new Thunk(expr);
+        } if (ptr.is(KWD_CON)) {
             ptr.skipAfterCheck(KWD_CON);
             var cons = readSaturatedConstructor(ptr);
             ptr.skipAfterCheck(")");

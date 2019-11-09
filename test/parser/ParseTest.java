@@ -63,7 +63,7 @@ public class ParseTest {
         return new BufferedReader(new InputStreamReader(ParseTest.class.getResourceAsStream(path)));
     }
 
-    private static String[] lines(String path) throws IOException {
+    public static String[] lines(String path) throws IOException {
         try (var reader = resourceStream(path)) {
             return reader.lines().toArray(String[]::new);
         }

@@ -1,8 +1,8 @@
 package tea.parser.expr;
 
 public class Binding {
-    private final Variable variable;
-    private final HeapObject valueExpr;
+    public final Variable variable;
+    public final HeapObject valueExpr;
 
     public Binding(Variable variable, HeapObject valueExpr) {
         this.variable = variable;

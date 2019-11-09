@@ -13,12 +13,14 @@ public class Token {
     public static final String KWD_FUN = "FUN(";
     public static final String KWD_CASE = "case";
     public static final String KWD_OF = "of";
+    public static final String KWD_THUNK = "THUNK(";
 
     private static final Map<String, Function> KEYWORDS = Map.of(
             KWD_CON, Function.identity(),
             KWD_FUN, Function.identity(),
             KWD_CASE, Function.identity(),
-            KWD_OF, Function.identity()
+            KWD_OF, Function.identity(),
+            KWD_THUNK, Function.identity()
     );
 
     public final String text;

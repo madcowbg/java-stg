@@ -1,4 +1,6 @@
 package tea.parser.expr;
 
-public interface Expr {
+import tea.ExprValue;
+
+public interface Expr extends ExprValue {
 }

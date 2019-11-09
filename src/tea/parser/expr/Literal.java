@@ -1,6 +1,8 @@
 package tea.parser.expr;
 
-public class Literal implements Atom {
+import tea.HeapValue;
+
+public class Literal implements Atom, HeapValue {
     private final int value;
 
     public Literal(int value) {
@@ -10,5 +12,15 @@ public class Literal implements Atom {
     @Override
     public String toString() {
         return "Lit<" + value + ">";
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof Literal && ((Literal) obj).value == value;
+    }
+
+    @Override
+    public int hashCode() {
+        return value;
     }
 }
