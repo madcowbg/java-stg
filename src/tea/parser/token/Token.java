@@ -1,152 +1,109 @@
 package tea.parser.token;
 
-public interface Token {
-    Token EOFToken = new Token() {
-        @Override
-        public boolean isConstructor() {
-            return false;
-        }
+import java.util.Map;
+import java.util.function.Function;
 
-        @Override
-        public boolean isKeyword() {
-            return false;
-        }
+public class Token {
 
-        @Override
-        public boolean isVariableName() {
-            return false;
-        }
+    private static final Map<String, Function> CONSTRUCTORS = Map.of(
+            "I", Function.identity()
+    );
 
-        @Override
-        public boolean isEquals() {
-            return false;
-        }
+    private static final Map<String, Function> KEYWORDS = Map.of(
+            "CONS(", Function.identity(),
+            "FUN(", Function.identity(),
+            "case", Function.identity()
+    );
 
-        @Override
-        public String toString() {
-            return "!!!EOF!!!";
-        }
+    final String value;
 
-        @Override
-        public boolean isConstructorHeap() {
-            return false;
-        }
+    Token(String value) {
+        this.value = value;
+    }
 
-        @Override
-        public int litteralValue() {
-            throw new UnsupportedOperationException("can't get value of EOF token!");
-        }
+    public boolean isConstructor() {
+        return Token.CONSTRUCTORS.containsKey(value);
+    }
 
-        @Override
-        public boolean isEndBrace() {
-            return false;
-        }
+    public boolean isKeyword() {
+        return Token.KEYWORDS.containsKey(value);
+    }
 
-        @Override
-        public boolean isAtom() {
-            return false;
-        }
+    public boolean isVariableName() {
+        return !isKeyword() && !isConstructor() && value.matches("^[a-zA-Z_][a-zA-Z_0-9]*$");
+    }
 
-        @Override
-        public String inner() {
-            throw new UnsupportedOperationException("can't get value of EOF token!");
-        }
+    public boolean isEquals() {
+        return value.equals("=");
+    }
 
-        @Override
-        public boolean isEndOfBinding() {
+    public String toString() {
+        return "T[" + value + "]";
+    }
+
+    public boolean isConstructorHeap() {
+        return value.equals("CON(");
+    }
+
+    public int litteralValue() {
+        return Integer.parseInt(value);
+    }
+
+    public boolean isEndBrace() {
+        return value.equals(")");
+    }
+
+    public boolean isAtom() {
+        return isVariableName() || isLitteral();
+
+    }
+
+    public boolean isLitteral() {
+        try {
+            Integer.parseInt(value);
             return true;
-        }
-
-        @Override
-        public boolean isEOF() {
-            return true;
-        }
-
-        @Override
-        public boolean isFunctionHeap() {
+        } catch (NumberFormatException e) {
             return false;
         }
+    }
 
-        @Override
-        public boolean isRightArrow() {
-            return false;
-        }
+    public String inner() {
+        return value;
+    }
 
-        @Override
-        public boolean isCase() {
-            return false;
-        }
+    public boolean isEndOfBinding() {
+        return isSemicolon();
+    }
 
-        @Override
-        public boolean isOf() {
-            return false;
-        }
+    public boolean isSemicolon() {
+        return value.equals(";");
+    }
 
-        @Override
-        public boolean isOpenCurly() {
-            return false;
-        }
+    public boolean isFunctionHeap() {
+        return value.equals("FUN(");
+    }
 
-        @Override
-        public boolean isEndOfAlt() {
-            return false;
-        }
+    public boolean isRightArrow() {
+        return value.equals("->");
+    }
 
-        @Override
-        public boolean isClosedCurly() {
-            return false;
-        }
+    public boolean isCase() {
+        return value.equals("case");
+    }
 
-        @Override
-        public boolean isLitteral() {
-            return false;
-        }
+    public boolean isOf() {
+        return value.equals("of");
+    }
 
-        @Override
-        public boolean isSemicolon() {
-            return false;
-        }
-    };
+    public boolean isOpenCurly() {
+        return value.equals("{");
+    }
 
-    boolean isConstructor();
+    public boolean isEndOfAlt() {
+        return isSemicolon() || isClosedCurly();
+    }
 
-    boolean isKeyword();
-
-    boolean isVariableName();
-
-    boolean isEquals();
-
-    String toString();
-
-    boolean isConstructorHeap();
-
-    int litteralValue();
-
-    boolean isEndBrace();
-
-    boolean isAtom();
-
-    String inner();
-
-    boolean isEndOfBinding();
-
-    boolean isEOF();
-
-    boolean isFunctionHeap();
-
-    boolean isRightArrow();
-
-    boolean isCase();
-
-    boolean isOf();
-
-    boolean isOpenCurly();
-
-    boolean isEndOfAlt();
-
-    boolean isClosedCurly();
-
-    boolean isLitteral();
-
-    boolean isSemicolon();
+    public boolean isClosedCurly() {
+        return value.equals("}");
+    }
 }

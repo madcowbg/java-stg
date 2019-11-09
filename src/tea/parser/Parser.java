@@ -12,7 +12,6 @@ import java.util.stream.Stream;
 
 public class Parser {
 
-
     public static String[] tokenize(String[] lines) {
         return Stream.of(lines)
                 .filter(Predicate.not(String::isBlank))
@@ -36,7 +35,7 @@ public class Parser {
         var ptr = new TokenPointer(tokens);
 
         List<Binding> bindings = new ArrayList<>();
-        while (!ptr.current().isEOF()) {
+        while (!ptr.isEOF()) {
             bindings.add(readBinding(ptr));
         }
 
@@ -48,14 +47,14 @@ public class Parser {
      * var = obj
      */
     private static Binding readBinding(TokenPointer ptr) {
-        var variable = ptr.current();
-
-        ptr.advanceAfterCheck(Token::isVariableName, " is not a valid variable name!");
-        ptr.advanceAfterCheck(Token::isEquals, " must be `=`!");
+        var variable = ptr.advanceAfterCheck(Token::isVariableName, " is not a valid variable name!");
+        ptr.skipAfterCheck(Token::isEquals, " must be `=`!");
 
         var valueExpr = readHeapObject(ptr);
 
-        ptr.advanceAfterCheck(Token::isEndOfBinding, " is not a recognized end of binding!");
+        if (!ptr.isEOF()) {
+            ptr.skipAfterCheck(Token::isEndOfBinding, " is not a recognized end of binding!");
+        }
 
         return new Binding(new Variable(variable), valueExpr);
     }
@@ -66,30 +65,31 @@ public class Parser {
      * FUN(x1 ... xn -> e)    - Function (arity = n >= 1)
      */
     private static HeapObject readHeapObject(TokenPointer ptr) {
-        if (ptr.current().isConstructorHeap()) {
-            ptr.advance(); // skip CONS(
+        if (ptr.isConstructorHeap()) {
+            ptr.skipAfterCheck(Token::isConstructorHeap, "expected `CONS`");
             var cons = readSaturatedConstructor(ptr);
-            ptr.advance(); // skip )
+            ptr.skipAfterCheck(Token::isEndBrace, "expected `)`");
             return cons;
-        } else if (ptr.current().isFunctionHeap()) {
-            ptr.advance(); // skip FUN(
+        } else if (ptr.isFunctionHeap()) {
+            ptr.skipAfterCheck(Token::isFunctionHeap, "expected `FUN(`");
             var fun = readFunction(ptr);
-            ptr.advance(); // skip )
+            ptr.skipAfterCheck(Token::isEndBrace, "expected `)`");
             return fun;
         } else {
-            throw new RuntimeException(ptr.current() + " is not a valid heap object type!"); // FIXME add...
+            ptr.fail(" is not a valid heap object type!");
+            return null; // unreachable
         }
     }
 
     private static Func readFunction(TokenPointer ptr) {
         List<Variable> vars = new ArrayList<>();
 
-        while (!ptr.current().isRightArrow()) {
+        while (!ptr.isRightArrow()) {
             var name = ptr.advanceAfterCheck(Token::isVariableName, " is not a valid variable!");
             vars.add(new Variable(name));
         }
 
-        ptr.advanceAfterCheck(Token::isRightArrow, " is not `->`!"); // skip `->`
+        ptr.skipAfterCheck(Token::isRightArrow, " is not `->`!"); // skip `->`
 
         var e = readExpression(ptr);
 
@@ -99,40 +99,40 @@ public class Parser {
     }
 
     private static Expr readExpression(TokenPointer ptr) {
-        if (ptr.current().isAtom()) {
+        if (ptr.isAtom()) {
             var atom = readAtom(ptr);
             return atom;
         }
-        if (ptr.current().isCase()) {
+        if (ptr.isCase()) {
             ptr.advance(); // skip `case`
 
             return readCase(ptr);
         }
 
-        // FIXME add more expression types
-        throw new RuntimeException(ptr.current() + " is not an expression!!!");
+        ptr.fail(" is not an expression!!!");
+        return null; // unreachable
     }
 
     private static Case readCase(TokenPointer ptr) {
         var e = readExpression(ptr);
 
         // skip `of`
-        ptr.advanceAfterCheck(Token::isOf, " but expected `of`!");
+        ptr.skipAfterCheck(Token::isOf, " but expected `of`!");
         // skip `{`
-        ptr.advanceAfterCheck(Token::isOpenCurly, ", expected `{`!");
+        ptr.skipAfterCheck(Token::isOpenCurly, ", expected `{`!");
 
         var alts = new ArrayList<Alternative>();
-        while (!ptr.current().isClosedCurly()) {
+        while (!ptr.isClosedCurly()) {
             alts.add(readAlternative(ptr));
 
-            ptr.checkCurrent(Token::isEndOfAlt, "got " + ptr.current() + ", expected `}` or `;`.");
+            ptr.checkCurrent(Token::isEndOfAlt, ", expected `}` or `;`.");
 
-            if (ptr.current().isSemicolon()) {
+            if (ptr.isSemicolon()) {
                 ptr.advance(); // skip ;
             }
         }
 
-        ptr.advanceAfterCheck(Token::isClosedCurly, ", expected `}`"); // skip `}`
+        ptr.skipAfterCheck(Token::isClosedCurly, ", expected `}`"); // skip `}`
         return new Case(e, alts);
     }
 
@@ -141,13 +141,11 @@ public class Parser {
      * x -> e                 - default alternative
      */
     private static Alternative readAlternative(TokenPointer ptr) {
-        if (ptr.current().isConstructor()) {
-            var cons = ptr.current();
-
-            ptr.advance();
+        if (ptr.isConstructor()) {
+            var cons = ptr.advanceAfterCheck(Token::isConstructor, "WTF?");
 
             List<Variable> vars = new ArrayList<>();
-            while (!ptr.current().isRightArrow()) {
+            while (!ptr.isRightArrow()) {
                 var name = ptr.advanceAfterCheck(Token::isVariableName, ", expected a variable name or `->`.");
                 vars.add(new Variable(name));
             }
@@ -155,20 +153,21 @@ public class Parser {
 
             var expr = readExpression(ptr);
 
-            ptr.checkCurrent(Token::isEndOfAlt, "got " + ptr.current() + ", expected `;` or `}`.");
+            ptr.checkCurrent(Token::isEndOfAlt, ", expected `;` or `}`.");
 
             return new DeConstructor(cons, vars, expr);
-        } else if (ptr.current().isVariableName()) {
+        } else if (ptr.isVariableName()) {
             var name = ptr.advanceAfterCheck(Token::isVariableName, ", expected variable name");
 
-            ptr.advanceAfterCheck(Token::isRightArrow, ", expected `->`."); // skip `->`
+            ptr.skipAfterCheck(Token::isRightArrow, ", expected `->`."); // skip `->`
 
             var expr = readExpression(ptr);
-            ptr.checkCurrent(Token::isEndOfAlt, "got " + ptr.current() + ", expected `;` or `}`.");
+            ptr.checkCurrent(Token::isEndOfAlt, ", expected `;` or `}`.");
 
             return new DefaultAlternative(new Variable(name), expr);
         } else {
-            throw new RuntimeException("got " + ptr.current() + ", expected constructor or default alternative.");
+            ptr.fail(", expected constructor or default alternative.");
+            return null; // unreachable
         }
     }
 
@@ -179,10 +178,8 @@ public class Parser {
         var cons = ptr.advanceAfterCheck(Token::isConstructor, " is not a valid constructor!");
 
         List<Atom> atoms = new ArrayList<>();
-        while (!ptr.current().isEndBrace()) {
-            if (!ptr.current().isAtom()) {
-                throw new RuntimeException(ptr.current() + " is not a an atom!");
-            }
+        while (!ptr.isEndBrace()) {
+            ptr.checkCurrent(Token::isAtom, " is not a an atom!");
 
             atoms.add(readAtom(ptr));
         }
@@ -190,12 +187,13 @@ public class Parser {
     }
 
     private static Atom readAtom(TokenPointer ptr) {
-        if (ptr.current().isLitteral()) {
+        if (ptr.isLitteral()) {
             return new Literal(ptr.advanceAfterCheck(Token::isLitteral, "WTF?").litteralValue());
-        } else if (ptr.current().isVariableName()) {
+        } else if (ptr.isVariableName()) {
             return new Variable(ptr.advanceAfterCheck(Token::isVariableName, "WTF?"));
         } else {
-            throw new RuntimeException(ptr.current() + " is not atom!");
+            ptr.fail(" is not atom!");
+            return null; // unreachable
         }
     }
 
