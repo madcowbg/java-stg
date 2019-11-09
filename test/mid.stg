@@ -1,0 +1,9 @@
+
+foldl = FUN(f acc list ->
+   case list of {
+      Nil -> acc;
+      Cons h t -> let { newAcc = THUNK(f acc h) } in foldl f newAcc t
+   });
+
+# lazy sum with a well-known space leak
+sum = FUN(list -> foldl plusInt zero list);
