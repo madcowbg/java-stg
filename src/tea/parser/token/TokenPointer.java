@@ -1,5 +1,6 @@
 package tea.parser.token;
 
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -23,5 +24,19 @@ public class TokenPointer {
     @Override
     public String toString() {
         return Stream.of(tokens).limit(ptr).collect(Collectors.joining(" ", "", " ")) +  "<- [ptr=" + ptr + "]";
+    }
+
+    public Token advanceAfterCheck(Predicate<Token> check, String msgOnFail) {
+        var token = current();
+        checkCurrent(check, msgOnFail);
+        advance();
+
+        return token;
+    }
+
+    public void checkCurrent(Predicate<Token> check, String msgOnFail) {
+        if (!check.test(current())) {
+            throw new RuntimeException(current() + msgOnFail);
+        }
     }
 }

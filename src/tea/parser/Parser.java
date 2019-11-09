@@ -1,5 +1,6 @@
 package tea.parser;
 
+import tea.parser.expr.*;
 import tea.parser.token.Token;
 import tea.parser.token.TokenPointer;
 
@@ -45,31 +46,17 @@ public class Parser {
 
     /**
      * var = obj
-     * @param ptr
-     * @return
      */
     private static Binding readBinding(TokenPointer ptr) {
         var variable = ptr.current();
-        if (!variable.isVariableName()) {
-            throw new RuntimeException(ptr.current() + " is not a valid variable name!");
-        }
 
-        ptr.advance();
-
-        var eq = ptr.current();
-        if (!eq.isEquals()) {
-            throw new RuntimeException(eq + " must be `=`!");
-        }
-
-        ptr.advance();
+        ptr.advanceAfterCheck(Token::isVariableName, " is not a valid variable name!");
+        ptr.advanceAfterCheck(Token::isEquals, " must be `=`!");
 
         var valueExpr = readHeapObject(ptr);
 
-        if (!ptr.current().isEndOfBinding()) {
-            throw new RuntimeException(ptr.current() + " is not a recognized end of binding!");
-        }
+        ptr.advanceAfterCheck(Token::isEndOfBinding, " is not a recognized end of binding!");
 
-        ptr.advance();
         return new Binding(new Variable(variable), valueExpr);
     }
 
@@ -98,20 +85,15 @@ public class Parser {
         List<Variable> vars = new ArrayList<>();
 
         while (!ptr.current().isRightArrow()) {
-            if (!ptr.current().isVariableName()) {
-                throw new RuntimeException(ptr.current() + " is not a valid variable!");
-            }
-            vars.add(new Variable(ptr.current()));
-            ptr.advance();
+            var name = ptr.advanceAfterCheck(Token::isVariableName, " is not a valid variable!");
+            vars.add(new Variable(name));
         }
 
-        ptr.advance(); // skip `->`
+        ptr.advanceAfterCheck(Token::isRightArrow, " is not `->`!"); // skip `->`
 
         var e = readExpression(ptr);
 
-        if (!ptr.current().isEndBrace()) {
-            throw new RuntimeException(ptr.current() + " is not `)`!");
-        }
+        ptr.checkCurrent(Token::isEndBrace, " is not `)`!");
 
         return new Func(vars, e);
     }
@@ -119,43 +101,38 @@ public class Parser {
     private static Expr readExpression(TokenPointer ptr) {
         if (ptr.current().isAtom()) {
             var atom = readAtom(ptr);
-            ptr.advance();
             return atom;
-        } if (ptr.current().isCase()) {
-            ptr.advance();
-            var case_ = readCase(ptr);
-
-            return case_;
-        } else { // FIXME add more expression types
-            throw new RuntimeException(ptr.current()  + " is not an expression!!!");
         }
+        if (ptr.current().isCase()) {
+            ptr.advance(); // skip `case`
+
+            return readCase(ptr);
+        }
+
+        // FIXME add more expression types
+        throw new RuntimeException(ptr.current() + " is not an expression!!!");
     }
 
     private static Case readCase(TokenPointer ptr) {
         var e = readExpression(ptr);
 
-        if (!ptr.current().isOf()) {
-            throw new RuntimeException("got " + ptr.current() + ", expected `of`!");
-        }
-        ptr.advance(); // skip `of`
-
-        if (!ptr.current().isOpenCurly()) {
-            throw new RuntimeException("got " + ptr.current() + ", expected `{`!");
-        }
-        ptr.advance(); // skip {
+        // skip `of`
+        ptr.advanceAfterCheck(Token::isOf, " but expected `of`!");
+        // skip `{`
+        ptr.advanceAfterCheck(Token::isOpenCurly, ", expected `{`!");
 
         var alts = new ArrayList<Alternative>();
         while (!ptr.current().isClosedCurly()) {
             alts.add(readAlternative(ptr));
-            if (!ptr.current().isEndOfAlt()) {
-                throw new RuntimeException("got " + ptr.current() + ", expected `}` or `;`.");
-            }
+
+            ptr.checkCurrent(Token::isEndOfAlt, "got " + ptr.current() + ", expected `}` or `;`.");
+
             if (ptr.current().isSemicolon()) {
                 ptr.advance(); // skip ;
             }
         }
 
-        ptr.advance(); // skip `}`
+        ptr.advanceAfterCheck(Token::isClosedCurly, ", expected `}`"); // skip `}`
         return new Case(e, alts);
     }
 
@@ -171,34 +148,25 @@ public class Parser {
 
             List<Variable> vars = new ArrayList<>();
             while (!ptr.current().isRightArrow()) {
-                if (!ptr.current().isVariableName()) {
-                    throw new RuntimeException("got " + ptr.current() + ", expected a variable name or `->`.");
-                }
-                vars.add(new Variable(ptr.current()));
-                ptr.advance();
+                var name = ptr.advanceAfterCheck(Token::isVariableName, ", expected a variable name or `->`.");
+                vars.add(new Variable(name));
             }
             ptr.advance(); // skip ->
 
             var expr = readExpression(ptr);
-            if (!ptr.current().isEndOfAlt()) {
-                throw new RuntimeException("got " + ptr.current() + ", expected `;` or `}`.");
-            }
+
+            ptr.checkCurrent(Token::isEndOfAlt, "got " + ptr.current() + ", expected `;` or `}`.");
 
             return new DeConstructor(cons, vars, expr);
         } else if (ptr.current().isVariableName()) {
-            var variable = new Variable(ptr.current());
-            ptr.advance(); // skip var
-            if (!ptr.current().isRightArrow()) {
-                throw new RuntimeException("got " + ptr.current() + ", expected `->`.");
-            }
-            ptr.advance(); // skip `->`
+            var name = ptr.advanceAfterCheck(Token::isVariableName, ", expected variable name");
+
+            ptr.advanceAfterCheck(Token::isRightArrow, ", expected `->`."); // skip `->`
 
             var expr = readExpression(ptr);
-            if (!ptr.current().isEndOfAlt()) {
-                throw new RuntimeException("got " + ptr.current() + ", expected `;` or `}`.");
-            }
+            ptr.checkCurrent(Token::isEndOfAlt, "got " + ptr.current() + ", expected `;` or `}`.");
 
-            return new DefaultAlternative(variable, expr);
+            return new DefaultAlternative(new Variable(name), expr);
         } else {
             throw new RuntimeException("got " + ptr.current() + ", expected constructor or default alternative.");
         }
@@ -206,168 +174,29 @@ public class Parser {
 
     /**
      * C x y ... - saturated constructor call, n >= 0
-     *
      */
     private static Constructor readSaturatedConstructor(TokenPointer ptr) {
-        var cons = ptr.current();
-        if (cons.isConstructor()) {
-            ptr.advance();
-            List<Atom> atoms = new ArrayList<>();
+        var cons = ptr.advanceAfterCheck(Token::isConstructor, " is not a valid constructor!");
 
-            while (!ptr.current().isEndBrace()) {
-                if (!ptr.current().isAtom()) {
-                    throw new RuntimeException(ptr.current() + " is not a an atom!");
-                }
-
-                atoms.add(readAtom(ptr));
-                ptr.advance();
+        List<Atom> atoms = new ArrayList<>();
+        while (!ptr.current().isEndBrace()) {
+            if (!ptr.current().isAtom()) {
+                throw new RuntimeException(ptr.current() + " is not a an atom!");
             }
-            return new Constructor(cons, atoms);
-        } else {
-            throw new RuntimeException(cons + " is not a valid constructor!");
+
+            atoms.add(readAtom(ptr));
         }
+        return new Constructor(cons, atoms);
     }
 
     private static Atom readAtom(TokenPointer ptr) {
         if (ptr.current().isLitteral()) {
-            return new Litteral(ptr.current().litteralValue());
+            return new Literal(ptr.advanceAfterCheck(Token::isLitteral, "WTF?").litteralValue());
         } else if (ptr.current().isVariableName()) {
-            return new Variable(ptr.current());
+            return new Variable(ptr.advanceAfterCheck(Token::isVariableName, "WTF?"));
         } else {
-            throw new RuntimeException(ptr.current()  + " is not atom!");
+            throw new RuntimeException(ptr.current() + " is not atom!");
         }
     }
 
-    private static class Binding {
-        private final Variable variable;
-        private final HeapObject valueExpr;
-
-        public Binding(Variable variable, HeapObject valueExpr) {
-            this.variable = variable;
-            this.valueExpr = valueExpr;
-        }
-
-        @Override
-        public String toString() {
-            return "B<" + variable + ", " + valueExpr.toString() + ">";
-        }
-
-    }
-
-    private static class Variable implements Atom {
-        private final String name;
-
-        public Variable(Token name) {
-            this.name = name.inner();
-        }
-
-        @Override
-        public String toString() {
-            return "V<" + name + ">";
-        }
-    }
-
-    interface Atom extends Expr {
-
-    }
-
-    private static class Litteral implements Atom {
-        private final int value;
-
-        public Litteral(int value) {
-            this.value = value;
-        }
-
-        @Override
-        public String toString() {
-            return "Lit<" + value + ">";
-        }
-    }
-
-    private static class HeapObject {
-
-    }
-
-    private static class Constructor extends HeapObject {
-        private final Token c;
-        private final List<Atom> params;
-
-        public Constructor(Token c, List<Atom> params) {
-            this.c = c;
-            this.params = params;
-        }
-
-        @Override
-        public String toString() {
-            return "CONS<" + " " + c + " " + params.stream().map(Atom::toString).collect(Collectors.joining(" ", " ", "")) + ">";
-        }
-    }
-
-    private static class Func extends HeapObject {
-        private final List<Variable> vars;
-        private final Expr body;
-
-        public Func(List<Variable> vars, Expr body) {
-            this.vars = vars;
-            this.body = body;
-        }
-
-        @Override
-        public String toString() {
-            return "FUN<" + vars.stream().map(Variable::toString).collect(Collectors.joining(" ", " ", "")) + " -> " + body.toString() + ">";
-        }
-    }
-
-    private interface Expr {
-    }
-
-    private static class Alternative {
-    }
-
-    private static class Case implements Expr {
-        private final Expr expr;
-        private final ArrayList<Alternative> alts;
-
-        public Case(Expr expr, ArrayList<Alternative> alts) {
-            this.expr = expr;
-            this.alts = alts;
-        }
-
-        @Override
-        public String toString() {
-            return "case <" + expr + ", " + alts.stream().map(Alternative::toString).collect(Collectors.joining(";", "Alts<", ">")) + ">";
-        }
-    }
-
-    private static class DeConstructor extends Alternative {
-        private final Token cons;
-        private final List<Variable> vars;
-        private final Expr expr;
-
-        public DeConstructor(Token cons, List<Variable> vars, Expr expr) {
-            this.cons = cons;
-            this.vars = vars;
-            this.expr = expr;
-        }
-
-        @Override
-        public String toString() {
-            return "DC<" + cons + vars.stream().map(Variable::toString).collect(Collectors.joining(" ", " ", "")) + " -> " + expr + ">";
-        }
-    }
-
-    private static class DefaultAlternative extends Alternative {
-        private final Variable variable;
-        private final Expr expr;
-
-        public DefaultAlternative(Variable variable, Expr expr) {
-            this.variable = variable;
-            this.expr = expr;
-        }
-
-        @Override
-        public String toString() {
-            return "Def<" + variable + " -> " + expr + ">";
-        }
-    }
 }
