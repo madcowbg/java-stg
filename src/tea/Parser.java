@@ -31,7 +31,12 @@ public class Parser {
         var tokens = tokenize(lines);
         var ptr = new TokenPointer(tokens);
 
-        return new Binding[]{readBinding(ptr)};
+        List<Binding> bindings = new ArrayList<>();
+        while (!ptr.current().isEOF()) {
+            bindings.add(readBinding(ptr));
+        }
+
+        return bindings.toArray(Binding[]::new);
 
     }
 
@@ -60,6 +65,8 @@ public class Parser {
         if (!ptr.current().isEndOfBinding()) {
             throw new RuntimeException(ptr.current() + " is not a recognized end of binding!");
         }
+
+        ptr.advance();
         return new Binding(new Variable(variable), valueExpr);
     }
 

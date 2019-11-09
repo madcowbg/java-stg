@@ -56,6 +56,11 @@ public interface Token {
         public boolean isEndOfBinding() {
             return true;
         }
+
+        @Override
+        public boolean isEOF() {
+            return true;
+        }
     };
 
     boolean isConstructor();
@@ -79,4 +84,6 @@ public interface Token {
     String inner();
 
     boolean isEndOfBinding();
+
+    boolean isEOF();
 }

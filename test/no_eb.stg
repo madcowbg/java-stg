@@ -1,1 +1,4 @@
-zero = CON(I 0)
+zero = CON(I 0);
+  fl = CON(I -50);
+one  = CON(I 1)
+

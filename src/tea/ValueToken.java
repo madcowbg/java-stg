@@ -79,4 +79,9 @@ public class ValueToken implements Token {
     public boolean isEndOfBinding() {
         return value.equals(";");
     }
+
+    @Override
+    public boolean isEOF() {
+        return false;
+    }
 }
