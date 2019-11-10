@@ -5,6 +5,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static tea.parser.token.Token.PRIMOPS;
+
 public class TokenPointer {
     private static final Predicate<Token> ALWAYS_FAIL = (a) -> false;
 
@@ -58,7 +60,7 @@ public class TokenPointer {
         if (isEOF()) {
             throw new RuntimeException(this.toString() + " ! EOF reached...");
         } else if (!check.test(token())) {
-            throw new RuntimeException(token() + msgOnFail);
+            throw new RuntimeException(token() + msgOnFail + "\n" + this);
         }
     }
 
@@ -98,5 +100,9 @@ public class TokenPointer {
 
     public boolean isConstructor() {
         return checkToken(Token::isConstructor);
+    }
+
+    public boolean isPrimOp() {
+        return checkToken(t -> PRIMOPS.containsKey(t.text));
     }
 }

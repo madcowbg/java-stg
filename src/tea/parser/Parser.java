@@ -3,6 +3,7 @@ package tea.parser;
 import tea.parser.expr.*;
 import tea.parser.token.Token;
 import tea.parser.token.TokenPointer;
+import tea.parser.token.primops.PrimOpExpr;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -111,12 +112,17 @@ public class Parser {
     private static Expr readExpression(TokenPointer ptr) {
         if (ptr.is("(")) {
             ptr.skipAfterCheck("(");
-            var exprs = new ArrayList<Expr>();
-            while (!ptr.is(")")) {
-                exprs.add(readExpression(ptr));
+            Expr expr;
+            if (ptr.isPrimOp()) {
+                var op = ptr.advanceAfterCheck(t -> PRIMOPS.containsKey(t.text), ", but is not a primitive operation");
+                ArrayList<Expr> args = readRemainingArguments(ptr);
+                expr = new PrimOpExpr(op, args);
+            } else {
+                ArrayList<Expr> exprs = readRemainingArguments(ptr);
+                expr = new FuncCall(exprs.get(0), exprs.stream().skip(1).collect(Collectors.toList()));
             }
             ptr.skipAfterCheck(")");
-            return new FuncCall(exprs.get(0), exprs.stream().skip(1).collect(Collectors.toList()));
+            return expr;
         } else if(ptr.is(KWD_LET)) {
             ptr.skipAfterCheck(KWD_LET);
             var variable = ptr.advanceAfterCheck(Token::isVariableName, ", expected variable name");
@@ -135,6 +141,14 @@ public class Parser {
             ptr.fail(" is not an expression!!!");
             return null; // unreachable
         }
+    }
+
+    private static ArrayList<Expr> readRemainingArguments(TokenPointer ptr) {
+        var exprs = new ArrayList<Expr>();
+        while (!ptr.is(")")) {
+            exprs.add(readExpression(ptr));
+        }
+        return exprs;
     }
 
     private static Case readCase(TokenPointer ptr) {

@@ -1,5 +1,6 @@
 package tea.machine;
 
+import tea.parser.token.primops.PrimOpExpr;
 import tea.program.Program;
 import tea.parser.expr.Value;
 import tea.parser.expr.*;
@@ -7,6 +8,8 @@ import tea.parser.expr.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static tea.parser.token.Token.PRIMOPS;
 
 public class AbstractMachine {
     public static final Variable MAIN_VAR = new Variable("main");
@@ -35,7 +38,7 @@ public class AbstractMachine {
                 heap.put(x_prim, let_.obj);
                 e = replaceRecursive(let_.expr, Map.of(let_.variable, x_prim));
             } else if (e instanceof Case && ((Case) e).expr instanceof Variable && heap.get((Variable)((Case) e).expr) instanceof SaturatedConstructor) {
-                // (CASEON)
+                // (CASECON)
                 System.out.println("---------------------------------------(CASECON)");
 
                 var case_ = (Case) this.e;
@@ -47,14 +50,23 @@ public class AbstractMachine {
                                 .filter(a -> valueConstructor.c.equals(a.cons))
                                 .findFirst()
                                 .orElseGet(() -> {
-                                    throw new UnsupportedOperationException("default alternatives not implemented yet.");
+                                    throw new UnsupportedOperationException("default alternatives when passing saturated constructors not implemented yet.");
                                 });
-                // FIXME (CASEANY)
-                // alts.stream() // if not, then figure if default constructor makes sense
-                //      .filter(DefaultAlternative.class::isInstance)
-                //      .map(DefaultAlternative.class::cast)).findFirst();
 
                 this.e = replaceVariables(matchedDeconstr, valueConstructor);
+            } else if (e instanceof Case && (
+                    ((Case) e).expr instanceof Literal || heap.get(((Case) e).expr) instanceof Value)) { // implicit fallback - requires the (CASECON), otherwise infinite loop occurs
+                // (CASEANY) * FIXME doesn't work with constructors though ...
+                System.out.println("---------------------------------------(CASEANY)");
+                var _case = (Case) this.e;
+                var defAlt = _case.alts.stream()
+                        .filter(DefaultAlternative.class::isInstance)
+                        .map(DefaultAlternative.class::cast)
+                        .findFirst()
+                        .orElseThrow(() -> new ExecutionFailed("Default alternative not present, but is needed: " + e));
+
+                assert _case.expr instanceof Atom;
+                e = replaceRecursive(defAlt.expr, Map.of(defAlt.variable, (Atom)_case.expr));
             } else if (e instanceof Case) {
                 // (CASE)
                 System.out.println("---------------------------------------(CASE)");
@@ -104,6 +116,19 @@ public class AbstractMachine {
                         call_.exprs.stream().map(Atom.class::cast).collect(Collectors.toList()));
 
                 e = replaceRecursive(func_addr.body, callDictionary);
+            } else if (e instanceof PrimOpExpr) {
+                var _op = (PrimOpExpr) e;
+                var applicator = PRIMOPS.get(_op.op.text);
+
+                var args = new LinkedList<Literal>();
+                for (var a: _op.args) {
+                    if (!(a instanceof Literal)) {
+                        throw new ExecutionFailed("Can't execute primitive operation that has non-literals arguments: " + _op);
+                    }
+                    args.add((Literal) a);
+                }
+
+                e = new Literal(applicator.applyAsInt(args));
             } else {
                 break;
             }
@@ -150,23 +175,59 @@ public class AbstractMachine {
             return dictionary.containsKey(expr) ? dictionary.get(expr) : expr;
         } else if (expr instanceof FuncCall) {
             var call_ = (FuncCall) expr;
-            var params = new ArrayList<Expr>();
-            for (var arg: call_.exprs) {
-                params.add(replaceRecursive(arg, dictionary));
-            }
             return new FuncCall(
                     replaceRecursive(call_.f, dictionary),
-                    params);
+                    replaceRecursiveList(call_.exprs, dictionary));
         } else if (expr instanceof Let) {
             var let_ = (Let)expr;
             if (dictionary.containsKey(let_.variable)) {
                 throw new ExecutionFailed("trying to bind variable second time: " + let_.variable);
             }
 
-            return new Let(let_.variable, replaceRecursive(let_.obj, dictionary), replaceRecursive(let_.expr, dictionary));
-
+            return new Let(
+                    let_.variable,
+                    replaceRecursive(let_.obj, dictionary),
+                    replaceRecursive(let_.expr, dictionary));
+        } else if (expr instanceof Case) {
+            var _case = (Case) expr;
+            return new Case(
+                    replaceRecursive(_case.expr, dictionary),
+                    replaceRecursiveAlts(_case.alts, dictionary));
+        } else if (expr instanceof PrimOpExpr) {
+            var _op = (PrimOpExpr) expr;
+            return new PrimOpExpr(
+                    _op.op,
+                    replaceRecursiveList(_op.args, dictionary));
         } else {
-            throw new UnsupportedOperationException("fixme implement case free variable replacement... " + expr);
+            throw new UnsupportedOperationException("unsupported replacement: " + expr);
+        }
+    }
+
+    private List<Expr> replaceRecursiveList(List<Expr> exprs, Map<Variable, Atom> dictionary) throws ExecutionFailed {
+        var params = new ArrayList<Expr>();
+        for (var arg: exprs) {
+            params.add(replaceRecursive(arg, dictionary));
+        }
+        return params;
+    }
+
+    private LinkedList<Alternative> replaceRecursiveAlts(List<Alternative> list, Map<Variable, Atom> dictionary) throws ExecutionFailed {
+        var replacedAlts = new LinkedList<Alternative>();
+        for (var a: list) {
+            replacedAlts.add(replaceInAlt(a, dictionary));
+        }
+        return replacedAlts;
+    }
+
+    private Alternative replaceInAlt(Alternative a, Map<Variable, Atom> dictionary) throws ExecutionFailed {
+        if (a instanceof DeConstructorAlt) {
+            var _decons = (DeConstructorAlt) a;
+            return new DeConstructorAlt(_decons.cons, _decons.vars, replaceRecursive(_decons.expr, dictionary));
+        } else if (a instanceof DefaultAlternative) {
+            var _def = (DefaultAlternative) a;
+            return new DefaultAlternative(_def.variable, replaceRecursive(_def.expr, dictionary));
+        } else {
+            throw new UnsupportedOperationException("fixme implement case free variable replacement... " + a);
         }
     }
 

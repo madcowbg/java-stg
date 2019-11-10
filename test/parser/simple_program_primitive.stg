@@ -1,0 +1,25 @@
+
+main = THUNK(ANSWER);
+
+BOX = FUN(val skipped -> let r = CON(I val) in r);
+
+asd = CON(I 1);
+f = CON(I asd);
+unnecessary = FUN(val -> val);
+
+result = CON(I 43);
+
+whatever = CON( I 20);
+
+# the answer, three billion years later ... !
+# ANSWER = FUN(question -> let ANS = CON(I 42) in ANS);
+plusInt = FUN(x y ->
+   case x of {
+      I i -> case y of {
+               I j -> case (+# i j) of {
+                         z -> let theSum = CON(I z) in theSum }}});
+
+SEVEN = CON(I 7);
+THIRTY_FIVE = CON(I 35);
+
+ANSWER = THUNK( (plusInt SEVEN THIRTY_FIVE) )

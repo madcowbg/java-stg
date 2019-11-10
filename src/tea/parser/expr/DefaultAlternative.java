@@ -1,8 +1,8 @@
 package tea.parser.expr;
 
 public class DefaultAlternative extends Alternative {
-    private final Variable variable;
-    private final Expr expr;
+    public final Variable variable;
+    public final Expr expr;
 
     public DefaultAlternative(Variable variable, Expr expr) {
         this.variable = variable;

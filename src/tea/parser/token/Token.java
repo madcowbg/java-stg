@@ -1,12 +1,20 @@
 package tea.parser.token;
 
+import tea.parser.expr.Literal;
+
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 public class Token {
 
     private static final Map<String, Function> CONSTRUCTORS = Map.of(
             "I", Function.identity()
+    );
+
+    public static final Map<String, ToIntFunction<List<Literal>>> PRIMOPS = Map.of(
+            "+#", (List<Literal> a) -> a.get(0).value + a.get(1).value
     );
 
     public static final String KWD_CON = "CON(";

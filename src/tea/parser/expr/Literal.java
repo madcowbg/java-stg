@@ -1,7 +1,7 @@
 package tea.parser.expr;
 
 public class Literal implements Atom {
-    private final int value;
+    public final int value;
 
     public Literal(int value) {
         this.value = value;
