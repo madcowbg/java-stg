@@ -1,0 +1,19 @@
+
+main = THUNK(ANSWER);
+
+# the answer, three billion years later ... !
+# ANSWER = FUN(question -> let ANS = CON(I 42) in ANS);
+plusInt = FUN(x y ->
+   case x of {
+      I i -> case y of {
+               I j -> case (+# i j) of {
+                         z -> let theSum = CON(I z) in theSum }}});
+
+SEVEN = CON(I 7);
+THIRTY_FIVE = CON(I 48);
+MINUS_THIRTEEN = CON(I -13);
+
+sum3_prim = FUN(x y z -> case (+# x y) of { s2 -> (+# s2 z)});
+
+ANSWER = THUNK( case (sum3_prim 7 48 -13) of {v -> let r = CON(I v) in r});
+

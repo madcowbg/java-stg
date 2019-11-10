@@ -21,6 +21,8 @@ public class AbstractMachineTest {
                 {lines("simple_program_3.stg"), "CON< T[I]  Lit<43>>"},
                 {lines("simple_program_multi_eval.stg"), "CON< T[I]  Lit<42>>"},
                 {lines("simple_program_primitive.stg"), "CON< T[I]  Lit<42>>"},
+                {lines("simple_program_sum3.stg"), "CON< T[I]  Lit<42>>"},
+                {lines("simple_program_sum3boxed.stg"), "CON< T[I]  Lit<42>>"},
         };
     }
 

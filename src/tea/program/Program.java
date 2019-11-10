@@ -11,6 +11,9 @@ public class Program {
     public Program(Binding[] graph) throws LoadingFailed {
         this.globals = readTopLevelBindings(graph);
 
+        if (!globals.containsKey(new Variable("main"))) {
+            throw new LoadingFailed("No declared entry point `main`!");
+        }
         for (var global : globals.values()) {
             validate(global, new Stack<>());
         }
