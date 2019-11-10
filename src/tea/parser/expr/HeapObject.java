@@ -1,8 +1,6 @@
 package tea.parser.expr;
 
-import tea.ExprValue;
-
-public class HeapObject implements ExprValue {
+public class HeapObject {
 
     public static final HeapObject BLACKHOLE = new HeapObject() {
         @Override
