@@ -1,5 +1,8 @@
 package tea.machine;
 
+import tea.machine.continuation.CaseContinuation;
+import tea.machine.continuation.Continuation;
+import tea.machine.continuation.Upd;
 import tea.parser.token.primops.PrimOpExpr;
 import tea.program.Program;
 import tea.parser.expr.Value;

@@ -1,9 +1,9 @@
-package tea.machine;
+package tea.machine.continuation;
 
 import tea.parser.expr.Variable;
 
 public class Upd implements Continuation {
-    final Variable variable;
+    public final Variable variable;
 
     public Upd(Variable variable) {
         this.variable = variable;

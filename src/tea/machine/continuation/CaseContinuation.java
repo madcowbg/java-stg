@@ -1,4 +1,4 @@
-package tea.machine;
+package tea.machine.continuation;
 
 import tea.parser.expr.Alternative;
 
