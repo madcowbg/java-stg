@@ -23,6 +23,8 @@ public class Parser {
                 .replace(";", " ; ") // simplify semicolon tokenization
                 .replace("(", "( ")
                 .replace(")", " ) ")
+                .replace("{", " { ")
+                .replace("}", " } ")
                 .replace('\t', ' ') // simplify whitespaces
                 .replaceAll("\\s{2,}", " ") // cleanup whitespaces
                 .split("\\s");
@@ -72,7 +74,7 @@ public class Parser {
             var expr = readExpression(ptr);
             ptr.skipAfterCheck(")");
             return new Thunk(expr);
-        } if (ptr.is(KWD_CON)) {
+        } else if (ptr.is(KWD_CON)) {
             ptr.skipAfterCheck(KWD_CON);
             var cons = readSaturatedConstructor(ptr);
             ptr.skipAfterCheck(")");
@@ -106,12 +108,28 @@ public class Parser {
     }
 
     private static Expr readExpression(TokenPointer ptr) {
-        if (ptr.isAtom()) {
-            var atom = readAtom(ptr);
-            return atom;
+        if (ptr.is("(")) {
+            ptr.skipAfterCheck("(");
+            var exprs = new ArrayList<Expr>();
+            while (!ptr.is(")")) {
+                exprs.add(readExpression(ptr));
+            }
+            ptr.skipAfterCheck(")");
+            return new FuncCall(exprs.get(0), exprs.stream().skip(1).collect(Collectors.toList()));
+        } else if(ptr.is(KWD_LET)) {
+            ptr.skipAfterCheck(KWD_LET);
+            var variable = ptr.advanceAfterCheck(Token::isVariableName, ", expected variable name");
+            ptr.skipAfterCheck("=");
+            var obj = readHeapObject(ptr);
+            ptr.skipAfterCheck(KWD_IN);
+            var expr = readExpression(ptr);
+            return new Let(new Variable(variable), obj, expr);
         } else if (ptr.is(KWD_CASE)) {
             ptr.skipAfterCheck(KWD_CASE);
             return readCase(ptr);
+        } else if (ptr.isAtom()) {
+            var atom = readAtom(ptr);
+            return atom;
         } else {
             ptr.fail(" is not an expression!!!");
             return null; // unreachable
@@ -160,7 +178,7 @@ public class Parser {
 
             ptr.checkCurrent(Parser::isEndOfAlt, ", expected `;` or `}`.");
 
-            return new DeConstructor(cons, vars, expr);
+            return new DeConstructorAlt(cons, vars, expr);
         } else if (ptr.isVariableName()) {
             var name = ptr.advanceAfterCheck(Token::isVariableName, ", expected variable name");
 
@@ -179,7 +197,7 @@ public class Parser {
     /**
      * C x y ... - saturated constructor call, n >= 0
      */
-    private static Constructor readSaturatedConstructor(TokenPointer ptr) {
+    private static SaturatedConstructor readSaturatedConstructor(TokenPointer ptr) {
         var cons = ptr.advanceAfterCheck(Token::isConstructor, " is not a valid constructor!");
 
         List<Atom> atoms = new ArrayList<>();
@@ -188,7 +206,7 @@ public class Parser {
 
             atoms.add(readAtom(ptr));
         }
-        return new Constructor(cons, atoms);
+        return new SaturatedConstructor(cons, atoms);
     }
 
     private static Atom readAtom(TokenPointer ptr) {

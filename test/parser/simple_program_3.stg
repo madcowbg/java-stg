@@ -1,0 +1,8 @@
+INT = FUN(val -> let r = CON(I val) in r);
+
+asd = CON(I 1);
+f = CON(I asd);
+
+result = CON(I 43);
+# main = THUNK(let r = CON(I 43) in r)
+main = THUNK(result)

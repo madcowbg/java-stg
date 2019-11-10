@@ -1,4 +1,5 @@
 asd = CON(I 1);
 f = CON(I asd);
 
-main = THUNK(42)
+answ_42 = CON(I 42);
+main = THUNK(answ_42)

@@ -5,12 +5,12 @@ import tea.parser.token.Token;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class DeConstructor extends Alternative {
-    private final Token cons;
-    private final List<Variable> vars;
-    private final Expr expr;
+public class DeConstructorAlt extends Alternative {
+    public final Token cons;
+    public final List<Variable> vars;
+    public final Expr expr;
 
-    public DeConstructor(Token cons, List<Variable> vars, Expr expr) {
+    public DeConstructorAlt(Token cons, List<Variable> vars, Expr expr) {
         this.cons = cons;
         this.vars = vars;
         this.expr = expr;

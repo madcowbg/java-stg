@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.stream.Collectors;
 
 public class Case implements Expr {
-    private final Expr expr;
-    private final ArrayList<Alternative> alts;
+    public final Expr expr;
+    public final ArrayList<Alternative> alts;
 
     public Case(Expr expr, ArrayList<Alternative> alts) {
         this.expr = expr;

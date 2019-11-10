@@ -15,14 +15,18 @@ public class AbstractMachineTest {
     @DataProvider
     public static Object[][] runAbstractMachineCases() throws IOException {
         return new Object[][]{
-                {lines("simple_program.stg"), new Literal(42)},
+                {lines("simple_program.stg"), "CON< T[I]  Lit<42>>"},
+                {lines("simple_program_2.stg"), "CON< T[I]  Lit<41>>"},
+                {lines("simple_program_3.stg"), "CON< T[I]  Lit<43>>"},
         };
     }
 
     @Test(dataProvider = "runAbstractMachineCases")
-    void runAbstractMachine(String[] lines, Literal expectedResult) throws ExecutionFailed {
+    void runAbstractMachine(String[] lines, String expectedResult) throws ExecutionFailed {
         var graph = readToGraph(lines);
-        var result = new AbstractMachine(graph).run();
-        Assert.assertEquals(result, expectedResult);
+        var machine = new AbstractMachine(graph);
+        var result = machine.run();
+        System.out.println(machine);
+        Assert.assertEquals(result.toString(), expectedResult);
     }
 }

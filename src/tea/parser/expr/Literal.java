@@ -1,8 +1,6 @@
 package tea.parser.expr;
 
-import tea.HeapValue;
-
-public class Literal implements Atom, HeapValue {
+public class Literal implements Atom {
     private final int value;
 
     public Literal(int value) {

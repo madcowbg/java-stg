@@ -31,7 +31,7 @@ public class ParseTest {
         return new Object[][]{
                 {lines("first.stg"), "zero = CON( I 0 ) ;"},
                 {lines("mid.stg"), "foldl = FUN( f acc list -> case list of { Nil -> acc ; Cons h t -> let { newAcc = THUNK( f acc h ) } in foldl f newAcc t } ) ; sum = FUN( list -> foldl plusInt zero list )"},
-                {lines("large.stg"), "nil = CON( Nil ) ; zero = CON( I 0 ) ; one = CON( I 1 ) ; two = CON( I 2 ) ; three = CON( I 3 ) ; plusInt = FUN( x y -> case x of { I i -> case y of { I j -> case plus# i j of { x -> let { result = CON ( I x ) } in result }}} ) ; foldl = FUN( f acc list -> case list of { Nil -> acc ; Cons h t -> let { newAcc = THUNK( f acc h ) } in foldl f newAcc t } ) ; sum = FUN( list -> foldl plusInt zero list ) ; list1 = CON( Cons one nil ) ; list2 = CON( Cons two list1 ) ; list3 = CON( Cons three list2 ) ; main = THUNK( sum list3 ) ;"},
+                {lines("large.stg"), "nil = CON( Nil ) ; zero = CON( I 0 ) ; one = CON( I 1 ) ; two = CON( I 2 ) ; three = CON( I 3 ) ; plusInt = FUN( x y -> case x of { I i -> case y of { I j -> case plus# i j of { x -> let { result = CON ( I x ) } in result } } } ) ; foldl = FUN( f acc list -> case list of { Nil -> acc ; Cons h t -> let { newAcc = THUNK( f acc h ) } in foldl f newAcc t } ) ; sum = FUN( list -> foldl plusInt zero list ) ; list1 = CON( Cons one nil ) ; list2 = CON( Cons two list1 ) ; list3 = CON( Cons three list2 ) ; main = THUNK( sum list3 ) ;"},
         };
     }
 
@@ -44,11 +44,11 @@ public class ParseTest {
     @DataProvider
     public static Object[][] readToGraph() throws IOException {
         return new Object[][]{
-                {lines("first.stg"), "[B<V<zero>, CONS< T[I]  Lit<0>>>]"},
-                {lines("no_eb.stg"), "[B<V<zero>, CONS< T[I]  Lit<0>>>, B<V<fl>, CONS< T[I]  Lit<-50>>>, B<V<one>, CONS< T[I]  Lit<1>>>]"},
-                {lines("fun.stg"), "[B<V<zero>, CONS< T[I]  Lit<0>>>, B<V<f>, FUN< V<var1> V<var2> V<var3> -> Lit<0>>>]"},
+                {lines("first.stg"), "[B<V<zero>, CON< T[I]  Lit<0>>>]"},
+                {lines("no_eb.stg"), "[B<V<zero>, CON< T[I]  Lit<0>>>, B<V<fl>, CON< T[I]  Lit<-50>>>, B<V<one>, CON< T[I]  Lit<1>>>]"},
+                {lines("fun.stg"), "[B<V<zero>, CON< T[I]  Lit<0>>>, B<V<f>, FUN< V<var1> V<var2> V<var3> -> Lit<0>>>]"},
                 {lines("fact.stg"), "[B<V<fact_dummy>, FUN< V<val> -> case <V<val>, Alts<DC<T[I] V<sth> -> V<other>>;Def<V<x> -> Lit<1>>>>>>]"},
-                {lines("constructor_cases.stg"), "[B<V<asd>, CONS< T[I]  Lit<1>>>, B<V<f>, CONS< T[I]  V<asd>>>]"},
+                {lines("constructor_cases.stg"), "[B<V<asd>, CON< T[I]  Lit<1>>>, B<V<f>, CON< T[I]  V<asd>>>]"},
 //                {lines("large.stg"), ""},
         };
     }
