@@ -12,16 +12,11 @@ public class AbstractMachine {
     private Expr e;
     private final Stack<Continuation> s = new Stack<>();
 
-    private final Map<Variable, HeapObject> heap = new HashMap<>();
-    int freshVarCntr = 0;
+    private final Map<Variable, HeapObject> heap;
+    private int freshVarCntr = 0;
 
-    public AbstractMachine(Binding[] program) throws ExecutionFailed {
-        for(var b: program) {
-            if (heap.containsKey(b.variable)) {
-                throw new ExecutionFailed("attempt to redefine variable " + b.variable);
-            }
-            heap.put(b.variable, b.valueExpr);
-        }
+    public AbstractMachine(Program program) {
+        heap = new HashMap<>(program.globals);
     }
 
     public Value run() throws ExecutionFailed {
