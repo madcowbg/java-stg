@@ -1,10 +1,10 @@
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.AbstractMachine;
-import tea.ExecutionFailed;
-import tea.LoadingFailed;
-import tea.Program;
+import tea.machine.AbstractMachine;
+import tea.machine.ExecutionFailed;
+import tea.program.LoadingFailed;
+import tea.program.Program;
 
 import java.io.IOException;
 
@@ -19,6 +19,7 @@ public class AbstractMachineTest {
                 {lines("simple_program.stg"), "CON< T[I]  Lit<42>>"},
                 {lines("simple_program_2.stg"), "CON< T[I]  Lit<41>>"},
                 {lines("simple_program_3.stg"), "CON< T[I]  Lit<43>>"},
+                {lines("simple_program_multi_eval.stg"), "CON< T[I]  Lit<42>>"},
         };
     }
 

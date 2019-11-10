@@ -1,4 +1,4 @@
-package tea;
+package tea.program;
 
 import tea.parser.expr.*;
 

@@ -1,5 +1,6 @@
-package tea;
+package tea.machine;
 
+import tea.program.Program;
 import tea.parser.expr.Value;
 import tea.parser.expr.*;
 
@@ -14,6 +15,7 @@ public class AbstractMachine {
 
     private final Map<Variable, HeapObject> heap;
     private int freshVarCntr = 0;
+    private int iter;
 
     public AbstractMachine(Program program) {
         heap = new HashMap<>(program.globals);
@@ -23,6 +25,7 @@ public class AbstractMachine {
         e = MAIN_VAR;
 
         while (true) {
+            iter++;
             if (e instanceof Let) {
                 // (LET)
                 System.out.println("---------------------------------------(LET)");
@@ -59,6 +62,12 @@ public class AbstractMachine {
 
                 e = case_.expr;
                 s.push(new CaseContinuation(case_.alts));
+            } else if (!s.isEmpty() && s.peek() instanceof CaseContinuation && (e instanceof Literal || heap.get(e) instanceof Value)) {
+                System.out.println("---------------------------------------(RET)");
+                var cc = (CaseContinuation)s.peek();
+
+                s.pop();
+                e = new Case(e, cc.alts);
             } else if (e instanceof Variable && heap.get(e) instanceof Thunk) {
                 // (THUNK)
                 System.out.println("---------------------------------------(THUNK)");
@@ -110,7 +119,7 @@ public class AbstractMachine {
     }
 
     private Variable freshVar() {
-        return new Variable("zzzvar_" + (freshVarCntr ++));
+        return new Variable("_zvar_" + (freshVarCntr ++));
     }
 
     private Expr replaceVariables(Alternative alternative, SaturatedConstructor values) throws ExecutionFailed {
@@ -179,7 +188,8 @@ public class AbstractMachine {
     public String toString() {
         String stackDump = s.stream().map(Continuation::toString).collect(Collectors.joining("\n", "", "\n"));
         String heapDump = heap.entrySet().stream().map(e -> e.getKey() + " -> " + e.getValue()).collect(Collectors.joining("\n", "", "\n"));
-        return  "\n========= Expr: =========\n" + e + "\n" +
+        return  "\n======== Info: =========\nIter: " + iter + "\n" +
+                "========= Expr: =========\n" + e + "\n" +
                 "========= Stack: ========\n" + stackDump +
                 "========= Heap: =========\n" + heapDump +
                 "=========================";
@@ -187,31 +197,3 @@ public class AbstractMachine {
 
 }
 
-class CaseContinuation extends Continuation {
-    private List<Alternative> alts;
-
-    public CaseContinuation(List<Alternative> alts) {
-        this.alts = alts;
-    }
-
-    @Override
-    public String toString() {
-        return "case * of {" + alts.stream().map(Object::toString).collect(Collectors.joining(";")) + "}";
-    }
-}
-
-class Upd extends Continuation {
-    final Variable variable;
-
-    public Upd(Variable variable) {
-        this.variable = variable;
-    }
-
-    @Override
-    public String toString() {
-        return "Upd " + variable + " *";
-    }
-}
-
-class Continuation {
-}

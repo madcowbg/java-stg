@@ -25,6 +25,7 @@ public class Parser {
                 .replace(")", " ) ")
                 .replace("{", " { ")
                 .replace("}", " } ")
+                .replace("=", " = ")
                 .replace('\t', ' ') // simplify whitespaces
                 .replaceAll("\\s{2,}", " ") // cleanup whitespaces
                 .split("\\s");

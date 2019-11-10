@@ -1,4 +1,4 @@
-package tea;
+package tea.machine;
 
 public class ExecutionFailed extends Exception {
 

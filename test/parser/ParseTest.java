@@ -7,8 +7,10 @@ import tea.parser.Parser;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Arrays;
+import java.util.Optional;
 
 public class ParseTest {
 
@@ -59,13 +61,14 @@ public class ParseTest {
         Assert.assertEquals(Arrays.toString(bindings), expected);
     }
 
-    private static BufferedReader resourceStream(String path) {
-        return new BufferedReader(new InputStreamReader(ParseTest.class.getResourceAsStream(path)));
+    private static InputStream resourceStream(String path) {
+        return Optional.ofNullable(ParseTest.class.getResourceAsStream(path))
+                .orElseGet(() -> {throw new RuntimeException(path);});
     }
 
     public static String[] lines(String path) throws IOException {
         try (var reader = resourceStream(path)) {
-            return reader.lines().toArray(String[]::new);
+            return new BufferedReader(new InputStreamReader(reader)).lines().toArray(String[]::new);
         }
     }
 

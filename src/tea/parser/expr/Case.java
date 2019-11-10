@@ -1,13 +1,14 @@
 package tea.parser.expr;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class Case implements Expr {
     public final Expr expr;
-    public final ArrayList<Alternative> alts;
+    public final List<Alternative> alts;
 
-    public Case(Expr expr, ArrayList<Alternative> alts) {
+    public Case(Expr expr, List<Alternative> alts) {
         this.expr = expr;
         this.alts = alts;
     }
