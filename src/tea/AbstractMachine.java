@@ -27,7 +27,7 @@ public class AbstractMachine {
     public Value run() throws ExecutionFailed {
         e = MAIN_VAR;
 
-        while (!resultIsCalculated()) {
+        while (true) {
             if (e instanceof Let) {
                 // (LET)
                 System.out.println("---------------------------------------(LET)");
@@ -101,11 +101,13 @@ public class AbstractMachine {
 
                 e = replaceRecursive(func_addr.body, callDictionary);
             } else {
-                throw new ExecutionFailed("Does not have rule for " + e + " in machine: \n" + this);
+                break;
             }
         }
-        assert main() instanceof Value;
-        return (Value) main();
+        if (!(e instanceof Variable) || !(heap.get(e) instanceof Value) || !s.isEmpty()) {
+            throw new ExecutionFailed("Does not have rule for " + e + " in machine: \n" + this);
+        }
+        return (Value) heap.get(e);
     }
 
     private boolean allAtoms(List<Expr> exprs) {
@@ -176,14 +178,6 @@ public class AbstractMachine {
         } else {
             throw new UnsupportedOperationException("fixme implement case for recursive clean of obj ... " + obj);
         }
-    }
-
-    private boolean resultIsCalculated() {
-        return main() instanceof Value && s.isEmpty();
-    }
-
-    private HeapObject main() {
-        return heap.get(new Variable("main"));
     }
 
     @Override
