@@ -7,37 +7,14 @@ import tea.parser.token.primops.PrimOpExpr;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static tea.parser.token.Token.*;
 
-public class Parser {
-
-    public static String[] tokenize(String[] lines) {
-        return Stream.of(lines)
-                .filter(Predicate.not(String::isBlank))
-                .map(String::trim)
-                .filter(Predicate.not(Parser::isComment))
-                .collect(Collectors.joining(" ")) // assume space at end of lines
-                .replace(";", " ; ") // simplify semicolon tokenization
-                .replace("(", "( ")
-                .replace(")", " ) ")
-                .replace("{", " { ")
-                .replace("}", " } ")
-                .replace("=", " = ")
-                .replace('\t', ' ') // simplify whitespaces
-                .replaceAll("\\s{2,}", " ") // cleanup whitespaces
-                .split("\\s");
-    }
-
-    private static boolean isComment(String s) {
-        return s.startsWith("#");
-    }
+public class ParserStg1 {
 
     public static Binding[] readToGraph(String[] lines) {
-        var tokens = tokenize(lines);
+        var tokens = Tokenizer.tokenize(lines);
         var ptr = new TokenPointer(tokens);
 
         List<Binding> bindings = new ArrayList<>();
@@ -161,7 +138,7 @@ public class Parser {
         while (!ptr.is("}")) {
             alts.add(readAlternative(ptr));
 
-            ptr.checkCurrent(Parser::isEndOfAlt, ", expected `}` or `;`.");
+            ptr.checkCurrent(ParserStg1::isEndOfAlt, ", expected `}` or `;`.");
 
             ptr.skipIf(";");
         }
@@ -191,7 +168,7 @@ public class Parser {
 
             var expr = readExpression(ptr);
 
-            ptr.checkCurrent(Parser::isEndOfAlt, ", expected `;` or `}`.");
+            ptr.checkCurrent(ParserStg1::isEndOfAlt, ", expected `;` or `}`.");
 
             return new DeConstructorAlt(cons, vars, expr);
         } else if (ptr.isVariableName()) {
@@ -200,7 +177,7 @@ public class Parser {
             ptr.skipAfterCheck("->");
 
             var expr = readExpression(ptr);
-            ptr.checkCurrent(Parser::isEndOfAlt, ", expected `;` or `}`.");
+            ptr.checkCurrent(ParserStg1::isEndOfAlt, ", expected `;` or `}`.");
 
             return new DefaultAlternative(new Variable(name), expr);
         } else {

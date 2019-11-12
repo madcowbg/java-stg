@@ -3,7 +3,6 @@ package parser;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.parser.Parser;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,8 +11,9 @@ import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.Optional;
 
-public class ParseTest {
+import static tea.parser.Tokenizer.tokenize;
 
+public class StringParserTest {
     @DataProvider
     public static Object[][] parseToTokenCases() throws IOException {
         return new Object[][]{
@@ -24,7 +24,7 @@ public class ParseTest {
 
     @Test(dataProvider = "parseToTokenCases")
     void testParse(String[] lines, String expectedParsed) {
-        var tokens = Parser.tokenize(lines);
+        var tokens = tokenize(lines);
         Assert.assertEquals(Arrays.toString(tokens), expectedParsed);
     }
 
@@ -39,32 +39,10 @@ public class ParseTest {
 
     @Test(dataProvider = "parseToStringCases")
     void testReducedForm(String[] lines, String expectedParsed) {
-        var tokens = Parser.tokenize(lines);
+        var tokens = tokenize(lines);
         Assert.assertEquals(String.join(" ", tokens), expectedParsed);
     }
 
-    @DataProvider
-    public static Object[][] readToGraph() throws IOException {
-        return new Object[][]{
-                {lines("first.stg"), "[B<V<zero>, CON< T[I]  Lit<0>>>]"},
-                {lines("no_eb.stg"), "[B<V<zero>, CON< T[I]  Lit<0>>>, B<V<fl>, CON< T[I]  Lit<-50>>>, B<V<one>, CON< T[I]  Lit<1>>>]"},
-                {lines("fun.stg"), "[B<V<zero>, CON< T[I]  Lit<0>>>, B<V<f>, FUN< V<var1> V<var2> V<var3> -> Lit<0>>>]"},
-                {lines("fact.stg"), "[B<V<fact_dummy>, FUN< V<val> -> case <V<val>, Alts<DC<T[I] V<sth> -> V<other>>;Def<V<x> -> Lit<1>>>>>>]"},
-                {lines("constructor_cases.stg"), "[B<V<asd>, CON< T[I]  Lit<1>>>, B<V<f>, CON< T[I]  V<asd>>>]"},
-//                {lines("large.stg"), ""},
-        };
-    }
-
-    @Test(dataProvider = "readToGraph")
-    void readToGraph(String[] lines, String expected) {
-        var bindings = Parser.readToGraph(lines);
-        Assert.assertEquals(Arrays.toString(bindings), expected);
-    }
-
-    private static InputStream resourceStream(String path) {
-        return Optional.ofNullable(ParseTest.class.getResourceAsStream(path))
-                .orElseGet(() -> {throw new RuntimeException(path);});
-    }
 
     public static String[] lines(String path) throws IOException {
         try (var reader = resourceStream(path)) {
@@ -72,16 +50,8 @@ public class ParseTest {
         }
     }
 
-    @DataProvider
-    public static Object[][] borderCaseFails() throws IOException {
-        return new Object[][]{
-                {lines("border_cases/kwd_instd_var.stg")},
-                {lines("border_cases/kwd_instd_lit.stg")},
-        };
-    }
-
-    @Test(dataProvider = "borderCaseFails", expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "T\\[of\\] is not.*")
-    void checkBorderCaseFails(String[] lines) {
-        Parser.readToGraph(lines);
+    private static InputStream resourceStream(String path) {
+        return Optional.ofNullable(ParseStg2Test.class.getResourceAsStream(path))
+                .orElseGet(() -> {throw new RuntimeException(path);});
     }
 }

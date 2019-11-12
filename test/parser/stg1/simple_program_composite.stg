@@ -1,0 +1,10 @@
+
+main = THUNK(ANSWER);
+
+# the answer, three billion years later ... !
+
+sum2_prim = FUN(x y -> (+# x y));
+sum3_prim = FUN(x y z -> case (sum2_prim y z) of {s -> (sum2_prim x s)});
+
+ANSWER = THUNK( (sum3_prim 7 48 -13) );
+
