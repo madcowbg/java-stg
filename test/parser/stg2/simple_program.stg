@@ -5,4 +5,9 @@ f = {asd} \n {} -> MkInt {asd};
 answ_42 = {} \n {} -> MkInt {42#};
 main = {} \n {} -> answ_42 {};
 
+nil = {} \n {} -> Nil {};
+singleton = {} \n {x} -> Cons {x, nil};
+
+ANSWER = {} \n {} -> 42#;
+
 # main = THUNK(answ_42)

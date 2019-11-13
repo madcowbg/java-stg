@@ -17,7 +17,7 @@ public class ParseStg2Test {
     @DataProvider
     public static Object[][] readToGraph() throws IOException {
         return new Object[][]{
-                {lines("stg2/simple_program.stg"), "[asd = {} \\n {} -> MkInt {#`1`}, f = {asd} \\n {} -> MkInt {ID`asd`}, answ_42 = {} \\n {} -> MkInt {#`42`}, main = {} \\n {} -> answ_42{}]"},
+                {lines("stg2/simple_program.stg"), "[asd = {} \\n {} -> MkInt {#`1`}, f = {asd} \\n {} -> MkInt {ID`asd`}, answ_42 = {} \\n {} -> MkInt {#`42`}, main = {} \\n {} -> answ_42{}, nil = {} \\n {} -> Nil {}, singleton = {} \\n {x} -> Cons {ID`x`,ID`nil`}, ANSWER = {} \\n {} -> #`42`]"},
         };
     }
 

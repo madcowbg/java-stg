@@ -22,7 +22,7 @@ public class ParserStg2 {
     private static final Set<Object> PRIM_OPS = Set.of("+", "*", "-");
 
     private Set<String> CONS = Set.of(
-            "MkInt");
+            "MkInt", "Nil", "Cons");
 
     private final String[] tokens;
     private int ptr;
