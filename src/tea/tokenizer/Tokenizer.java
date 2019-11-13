@@ -1,4 +1,4 @@
-package tea.parser;
+package tea.tokenizer;
 
 import java.util.function.Predicate;
 import java.util.stream.Collectors;

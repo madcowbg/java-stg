@@ -1,0 +1,8 @@
+asd = {} \n {} -> MkInt {1#};
+
+f = {asd} \n {} -> MkInt {asd};
+
+answ_42 = {} \n {} -> MkInt {42#};
+main = {} \n {} -> answ_42 {};
+
+# main = THUNK(answ_42)

@@ -11,7 +11,7 @@ import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.Optional;
 
-import static tea.parser.Tokenizer.tokenize;
+import static tea.tokenizer.Tokenizer.tokenize;
 
 public class StringParserTest {
     @DataProvider
