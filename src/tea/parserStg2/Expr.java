@@ -1,4 +1,4 @@
 package tea.parserStg2;
 
-public interface Expr {
+public interface Expr<Var> {
 }

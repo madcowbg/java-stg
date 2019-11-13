@@ -1,8 +1,8 @@
 package tea.parserStg2;
 
 public class Binds {
-    private final Identifier var;
-    private final LF lf;
+    public final Identifier var;
+    public final LF lf;
 
     public Binds(Identifier var, LF lf) {
         this.var = var;
