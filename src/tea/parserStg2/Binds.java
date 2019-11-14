@@ -1,10 +1,10 @@
 package tea.parserStg2;
 
 public class Binds {
-    public final Identifier var;
+    public final Variable var;
     public final LF lf;
 
-    public Binds(Identifier var, LF lf) {
+    public Binds(Variable var, LF lf) {
         this.var = var;
         this.lf = lf;
     }

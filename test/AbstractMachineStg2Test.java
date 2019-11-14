@@ -15,11 +15,11 @@ public class AbstractMachineStg2Test {
     @DataProvider
     public static Object[][] runAbstractMachineCases() throws IOException {
         return new Object[][]{
-                {lines("stg2/simple_program.stg"), "CON< T[I]  Lit<42>>"},
+                {lines("stg2/simple_program.stg"), "MkInt {#`42`}"},
         };
     }
 
-    @Test(dataProvider = "runAbstractMachineCases", enabled = false)
+    @Test(dataProvider = "runAbstractMachineCases")
     void runAbstractMachine(String[] lines, String expectedResult) throws ParsinFailed, ExecutionFailed {
         var graph = new ParserStg2(lines).graph();
         var machine = new AbstractMachine(graph);

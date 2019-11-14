@@ -1,18 +1,16 @@
-package tea.parserStg2.machine;
+package tea.parserStg2;
 
-import tea.parserStg2.Identifier;
-
-public class Variable {
+public class Variable implements Expr, Atom {
     public static Variable MAIN = new Variable("main");
 
-    private final String name;
+    public final String name;
 
     public Variable(String name) {
         this.name = name;
     }
 
-    public static Variable of(Identifier var) {
-        return new Variable(var.name);
+    public static Variable ofName(String name) {
+        return new Variable(name);
     }
 
     @Override

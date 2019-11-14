@@ -5,12 +5,12 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class LF {
-    public final Identifier[] freeVars;
+    public final Variable[] freeVars;
     public final boolean pi;
-    public final Identifier[] boundVars;
+    public final Variable[] boundVars;
     public final Expr expr;
 
-    public LF(Identifier[] freeVars, boolean pi, Identifier[] boundVars, Expr expr) {
+    public LF(Variable[] freeVars, boolean pi, Variable[] boundVars, Expr expr) {
         this.freeVars = freeVars;
         this.pi = pi;
         this.boundVars = boundVars;

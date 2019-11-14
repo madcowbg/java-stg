@@ -89,9 +89,9 @@ public class ParserStg2 {
             if (!isIdentifier()) {
                 fail("unsupported token application:" + token());
             }
-            var var = tokenAndAdvance();
+            var var = Variable.ofName(tokenAndAdvance());
             var args = readAtomsList();
-            return new App(var, args);
+            return new Application(var, args);
         }
     }
 
@@ -138,15 +138,15 @@ public class ParserStg2 {
         }
     }
 
-    private Identifier[] readVarBlock() throws ParsinFailed {
+    private Variable[] readVarBlock() throws ParsinFailed {
         checkAndSkip(START_ATOM_BLOCK::equals);
-        var vars = new ArrayList<Identifier>();
+        var vars = new ArrayList<Variable>();
         while (!token().equals(END_ATOM_BLOCK)) {
             vars.add(readVar());
             checkAndSkipIf(ATOM_SEPARATOR::equals);
         }
         checkAndSkip(END_ATOM_BLOCK::equals);
-        return vars.toArray(Identifier[]::new);
+        return vars.toArray(Variable[]::new);
     }
 
     private void checkAndSkipIf(Predicate<String> check) {
@@ -155,11 +155,11 @@ public class ParserStg2 {
         }
     }
 
-    private Identifier readVar() throws ParsinFailed {
+    private Variable readVar() throws ParsinFailed {
         if (!isIdentifier()) {
             fail("invalid variable name: `" + token() + "`");
         }
-        return new Identifier(tokenAndAdvance());
+        return new Variable(tokenAndAdvance());
     }
 
     private boolean isIdentifier() {
