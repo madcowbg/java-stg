@@ -41,7 +41,7 @@ public class Environment {
 
     @Override
     public String toString() {
-        return toStr("\n") + "\n";
+        return toStr("\n");
     }
 
     public String toStr(String c) {
@@ -51,5 +51,16 @@ public class Environment {
     public void modifiedWith(Variable[] vars, LinkedList<Value> vals) {
         assert vars.length == vals.size();
         IntStream.range(0, vars.length).forEach(i -> this.vals.put(vars[i], vals.get(i)));
+    }
+
+    public Environment copyWithExtension(Variable[] vars, Addr[] addrs) {
+        assert vars.length == addrs.length;
+        var newVals = new HashMap<>(this.vals); // fixme could optimize this
+        IntStream.range(0, vars.length).forEach(i -> newVals.put(vars[i], addrs[i]));
+        return new Environment(newVals);
+    }
+
+    public Map<Variable, Value> valuesOf(Variable[] vars) {
+        return Arrays.stream(vars).filter(vals::containsKey).collect(Collectors.toMap(Function.identity(), vals::get));
     }
 }

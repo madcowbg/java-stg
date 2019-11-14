@@ -15,11 +15,15 @@ public class ParserStg2 {
     private static final String ATOM_SEPARATOR = ",";
 
     private static final String KWD_LET = "let";
+    private static final String KWD_LETREC = "letrec";
+    private static final String KWD_IN = "in";
     private static final String KWD_CASE = "case";
     private static final String LEFT_BRACE = "(";
     private static final Object RIGHT_BRACE = ")";
 
     private static final Set<Object> PRIM_OPS = Set.of("+", "*", "-");
+    private static final String START_LET_BLOCK = "{";
+    private static final String END_LET_BLOCK = "}";
 
     private Set<String> CONS = Set.of(
             "MkInt", "Nil", "Cons");
@@ -63,14 +67,31 @@ public class ParserStg2 {
 
     private Expr readExpression() throws ParsinFailed {
         if (token().equals(KWD_LET)) {
-            fail(token());
-            return null; // TODO
+            checkAndSkip(KWD_LET::equals);
+            return readLet(false);
+        } else if (token().equals(KWD_LETREC)) {
+            checkAndSkip(KWD_LETREC::equals);
+            return readLet(true);
         } else if (token().equals(KWD_CASE)) {
             fail(token());
             return null; // TODO
         } else {
             return readLitPrimConstrOrApp();
         }
+    }
+
+    private Expr readLet(boolean isRec) throws ParsinFailed {
+        checkAndSkip(START_LET_BLOCK::equals);
+        var binds = new ArrayList<Binds>();
+        while (!token().equals(END_LET_BLOCK)) {
+            binds.add(readBinding());
+            checkAndSkipIf(END_OF_BIND::equals);
+        }
+        checkAndSkip(END_LET_BLOCK::equals);
+        checkAndSkip(KWD_IN::equals);
+
+        var expr = readExpression();
+        return new Let(false, binds.toArray(Binds[]::new), expr);
     }
 
     private Expr readLitPrimConstrOrApp() throws ParsinFailed {

@@ -1,0 +1,8 @@
+
+LET_IT_GO = {hds} \n {v2} -> let {
+    y = {v2} \n {v3} -> MkInt {42#}
+} in y {-3#};
+
+answ_42 = {} \n {} -> 42#;
+
+main = {} \n {} -> LET_IT_GO {5#};

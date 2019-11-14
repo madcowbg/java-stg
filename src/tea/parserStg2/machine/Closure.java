@@ -12,13 +12,17 @@ public class Closure implements Expr {
     public LF codePointer;
     public final Map<Variable, Value> freeVars;
 
-    private Closure(LF codePointer) {
+    private Closure(LF codePointer, Map<Variable, Value> freeVars) {
         this.codePointer = codePointer;
-        this.freeVars = Collections.emptyMap();
+        this.freeVars = freeVars;
     }
 
     static Closure ofCode(LF lf) {
-        return new Closure(lf);
+        return new Closure(lf, Collections.emptyMap());
+    }
+
+    public static Closure ofCodeAndVars(LF lf, Map<Variable, Value> freeVars) {
+        return new Closure(lf, freeVars);
     }
 
     @Override

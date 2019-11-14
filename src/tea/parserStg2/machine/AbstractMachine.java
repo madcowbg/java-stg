@@ -69,6 +69,19 @@ public class AbstractMachine {
             } else if (e instanceof Eval && eAsEval().e instanceof Application && eAsEval().localEnv.valueOf(((Application) eAsEval().e).f) instanceof Int) {
                 debug("Eval (f {}) (f -> Int k)");
                 e = new ReturnInt((Int) eAsEval().localEnv.valueOf(((Application) eAsEval().e).f));
+            } else if (e instanceof Eval && eAsEval().e instanceof Let) {
+                debug("Eval (let ... in ...)");
+                var let = (Let) eAsEval().e;
+
+                Addr[] addrs = Arrays.stream(let.binds).map(b -> newAddr()).toArray(Addr[]::new);
+                var internalEnv = eAsEval().localEnv.copyWithExtension(Arrays.stream(let.binds).map(b -> b.var).toArray(Variable[]::new), addrs);
+                var localEnvRhs = let.isRec ? internalEnv : eAsEval().localEnv;
+
+                for (int i = 0; i < addrs.length; i++) {
+                    heap.store(addrs[i], Closure.ofCodeAndVars(let.binds[i].lf, localEnvRhs.valuesOf(let.binds[i].lf.freeVars)));
+                }
+
+                e = new Eval(let.expr, internalEnv);
             } else {
                 break;
             }
@@ -114,10 +127,10 @@ public class AbstractMachine {
     public String toString() {
         return  "\n======== Info: =========\nIter: " + iter + "\n" +
                 "========= Code: =========\n" + e + "\n" +
-                "==== Argument Stack: ====\n" + Arrays.toString(argumentStack.toArray()) +
-                "===== Update Stack: =====\n" + Arrays.toString(updateStack.toArray()) +
-                "========= Heap: =========\n" + heap.toString() +
-                "====== Global Env: ======\n" + globalEnv.toString() +
+                "==== Argument Stack: ====\n" + Arrays.toString(argumentStack.toArray()) + "\n" +
+                "===== Update Stack: =====\n" + Arrays.toString(updateStack.toArray()) + "\n" +
+                "========= Heap: =========\n" + heap.toString() + "\n" +
+                "====== Global Env: ======\n" + globalEnv.toString() + "\n" +
                 "=========================";
     }
 
