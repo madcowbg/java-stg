@@ -38,7 +38,7 @@ public class AbstractMachine {
         while(true) {
             iter++;
             if (e instanceof Eval && eAsEval().e instanceof Application && val(eAsEval().localEnv, globalEnv, ((Application) eAsEval().e).f) instanceof Addr ) {
-                debug("Rule: Eval (f x) r");
+                debug("(1)  Eval (f x) r");
                 var eval = eAsEval();
                 var app = (Application) eval.e;
                 var f = app.f;
@@ -49,7 +49,7 @@ public class AbstractMachine {
                 }
                 e = new Enter(a);
             } else if (e instanceof Enter && heap.has(eAsEnter().a)) {
-                debug("Rule: Enter a");
+                debug("(2)  Enter a");
 
                 var closure = heap.at(eAsEnter().a);
                 var xs = closure.codePointer.boundVars;
@@ -64,13 +64,13 @@ public class AbstractMachine {
                 localEnv.modifiedWith(closure.codePointer.boundVars, ws_a);
                 e = new Eval(closure.codePointer.expr, localEnv);
             } else if (e instanceof Eval && eAsEval().e instanceof Literal) {
-                debug("Eval k #Int");
+                debug("(9)  Eval k #Int");
                 e = new ReturnInt(new Int(((Literal) eAsEval().e)));
             } else if (e instanceof Eval && eAsEval().e instanceof Application && eAsEval().localEnv.valueOf(((Application) eAsEval().e).f) instanceof Int) {
-                debug("Eval (f {}) (f -> Int k)");
+                debug("(10) Eval (f {}) (f -> Int k)");
                 e = new ReturnInt((Int) eAsEval().localEnv.valueOf(((Application) eAsEval().e).f));
             } else if (e instanceof Eval && eAsEval().e instanceof Let) {
-                debug("Eval (let ... in ...)");
+                debug("(3)  Eval (let ... in ...)");
                 var let = (Let) eAsEval().e;
 
                 Addr[] addrs = Arrays.stream(let.binds).map(b -> newAddr()).toArray(Addr[]::new);
