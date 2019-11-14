@@ -32,7 +32,7 @@ public class AbstractMachine {
         return new Addr(nextAddr ++);
     }
 
-    public Expr run() throws ExecutionFailed {
+    public Object run() throws ExecutionFailed {
         e = new Eval(new Application(Variable.MAIN, new Atom[0]), Environment.newEmpty());
         iter = 0;
         while(true) {
@@ -63,17 +63,23 @@ public class AbstractMachine {
                 var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
                 localEnv.modifiedWith(closure.codePointer.boundVars, ws_a);
                 e = new Eval(closure.codePointer.expr, localEnv);
+            } else if (e instanceof Eval && eAsEval().e instanceof Literal) {
+                debug("Eval k #Int");
+                e = new ReturnInt(new Int(((Literal) eAsEval().e)));
+            } else if (e instanceof Eval && eAsEval().e instanceof Application && eAsEval().localEnv.valueOf(((Application) eAsEval().e).f) instanceof Int) {
+                debug("Eval (f {}) (f -> Int k)");
+                e = new ReturnInt((Int) eAsEval().localEnv.valueOf(((Application) eAsEval().e).f));
             } else {
                 break;
             }
         }
 
         debug(this.toString());
-        if (!(e instanceof Eval)) {
+        if (!(e instanceof Eval || e instanceof ReturnInt)) {
             throw new ExecutionFailed("Execution stopped at improper state: " + e);
         }
 
-        return eAsEval().e;
+        return e instanceof Eval ? eAsEval().e : ((ReturnInt) e).k;
     }
 
     private Enter eAsEnter() {
@@ -143,6 +149,11 @@ class Int implements Value {
 
     public Int(Literal a) {
         this.value = a.value;
+    }
+
+    @Override
+    public String toString() {
+        return value + "#";
     }
 }
 

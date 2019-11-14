@@ -16,6 +16,7 @@ public class AbstractMachineStg2Test {
     public static Object[][] runAbstractMachineCases() throws IOException {
         return new Object[][]{
                 {lines("stg2/simple_program.stg"), "MkInt {#`42`}"},
+                {lines("stg2/simple_program_return_prim.stg"), "42#"},
         };
     }
 
