@@ -180,6 +180,11 @@ public class AbstractMachine {
                 return new Int(Arrays.stream(args).mapToInt(i -> i.value).sum());
             case "*":
                 return new Int(Arrays.stream(args).mapToInt(i -> i.value).reduce((a, b) -> a+b).orElse(1));
+            case "-":
+                if (args.length != 2) {
+                    throw new ExecutionFailed("- is a binary op, got " + args.length + " parameters!");
+                }
+                return new Int(args[0].value - args[1].value);
             default:
                 throw new ExecutionFailed("Unrecognized primitive: " + op);
         }

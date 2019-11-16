@@ -1,0 +1,19 @@
+
+
+fib = {} \n {x} -> case x {} of {
+    0# -> 1#;
+    1# -> 1#;
+    val -> case - {x 1#} of {
+        px -> case fib {px} of {
+            fpx -> case - {x 2#} of {
+                px2 -> case fib {px2} of {
+                    fpx2 -> + {fpx fpx2}
+                }
+            }
+        }
+    }
+};
+
+# main = {} \n {} -> fib {1#};
+# main = {} \n {} -> fib {2#};
+main = {} \n {} -> fib {7#};
