@@ -4,10 +4,10 @@ import tea.tokenizer.Tokenizer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 public class ParserStg2 {
     public static final String END_OF_BIND = ";";
@@ -30,13 +30,14 @@ public class ParserStg2 {
     private static final String END_LET_BLOCK = "}";
     private static final String START_ALT_BLOCK = "{";
     private static final String END_ALT_BLOCK = "}";
+    private static final String KWD_DEFAULT = "default";
 
     private Set<String> CONS = Set.of(
             "MkInt", "Nil", "Cons");
 
     private Set<String> KWDS = Set.of(
             KWD_LET, KWD_LETREC, KWD_IN,
-            KWD_CASE, KWD_OF
+            KWD_CASE, KWD_OF, KWD_DEFAULT
     );
 
     private final String[] tokens;
@@ -88,11 +89,15 @@ public class ParserStg2 {
             var expr = readExpression();
             checkAndSkip(KWD_OF::equals);
             checkAndSkip(START_ALT_BLOCK::equals);
-            var alts = (isLiteral()) ? readAlts(this::readPrimAlt) : readAlts(this::readAlgAlt);
+            var alts = readAlts();
             return new Case(expr, alts);
         } else {
             return readLitPrimConstrOrApp();
         }
+    }
+
+    private boolean isConstructor() {
+        return CONS.contains(token());
     }
 
     private AlgAlt readAlgAlt() throws ParsingFailed {
@@ -110,18 +115,34 @@ public class ParserStg2 {
         return new PrimAlt(lit, expr);
     }
 
-    interface FailableSupplier<T> {
-        T get() throws ParsingFailed;
-    }
-    
-    private Alt[] readAlts(FailableSupplier<Alt> reader) throws ParsingFailed {
+    private Alt[] readAlts() throws ParsingFailed {
         var alts = new ArrayList<Alt>();
+
         while (!token().equals(END_ALT_BLOCK)) {
-            alts.add(reader.get());
+            if (isLiteral()) {
+                alts.add(readPrimAlt());
+            } else if (isConstructor()) {
+                alts.add(readAlgAlt());
+            } else if (token().equals(KWD_DEFAULT) || isIdentifier()) {
+                alts.add(readDefaultAlt());
+            } else {
+                fail("unrecognized token: " + token());
+            }
             checkAndSkipIf(END_OF_BIND::equals);
         }
+
         checkAndSkip(END_ALT_BLOCK::equals);
         return alts.toArray(Alt[]::new);
+    }
+
+    private DefaultAlt readDefaultAlt() throws ParsingFailed {
+        var keyToken = tokenAndAdvance();
+        checkAndSkip(RIGHTARROW::equals);
+        var expr = readExpression();
+
+        return new DefaultAlt(
+                Optional.of(keyToken).filter(Predicate.not(KWD_DEFAULT::equals)).map(Variable::ofName),
+                expr);
     }
 
     private Expr readLet(boolean isRec) throws ParsingFailed {

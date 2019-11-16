@@ -3,6 +3,8 @@ package tea.parserStg2;
 import tea.parserStg2.machine.Data;
 import tea.parserStg2.machine.Value;
 
+import java.util.Arrays;
+
 public class AlgAlt implements Alt {
     public final Cons<Variable> cons;
     public final Expr expr;
@@ -18,8 +20,13 @@ public class AlgAlt implements Alt {
     }
 
     @Override
-    public boolean matches(Data c, Value[] xs) {
+    public boolean matchCon(Data c, Value[] xs) {
         assert cons.args.length == xs.length;
         return cons.cons.equals(c.cons);
+    }
+
+    @Override
+    public boolean matchPrim(Value k) {
+        throw new RuntimeExecutionFailed("can't use algebraic alternative with primitive: " + k);
     }
 }
