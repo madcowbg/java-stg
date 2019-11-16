@@ -66,6 +66,19 @@ public class AbstractMachine {
                 var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
                 localEnv.modifiedWith(closure.codePointer.boundVars, ws_a.toArray(Value[]::new));
                 e = new Eval(closure.codePointer.expr, localEnv);
+            } else if (e instanceof Eval && eAsEval().e instanceof Let) {
+                debug("(3)  Eval (let ... in ...)");
+                var let = (Let) eAsEval().e;
+
+                Addr[] addrs = Arrays.stream(let.binds).map(b -> newAddr()).toArray(Addr[]::new);
+                var internalEnv = eAsEval().localEnv.copyWithExtension(Arrays.stream(let.binds).map(b -> b.var).toArray(Variable[]::new), addrs);
+                var localEnvRhs = let.isRec ? internalEnv : eAsEval().localEnv;
+
+                for (int i = 0; i < addrs.length; i++) {
+                    heap.store(addrs[i], Closure.ofCodeAndVars(let.binds[i].lf, localEnvRhs.valuesOf(let.binds[i].lf.freeVars)));
+                }
+
+                e = new Eval(let.expr, internalEnv);
             } else if (e instanceof Eval && eAsEval().e instanceof Case) {
                 debug("(4)  Eval (case e of alts) rho");
                 var case_ = (Case) eAsEval().e;
@@ -86,25 +99,16 @@ public class AbstractMachine {
 
                 cont.localEnv.modifiedWith(alt.cons.args, ws);
                 e = new Eval(alt.expr, cont.localEnv);
+            } else if (false) {
+                // FIXME implement (7) - case descructor
+            } else if (false) {
+                // FIXME implement (8) - case default
             } else if (e instanceof Eval && eAsEval().e instanceof Literal) {
                 debug("(9)  Eval k #Int");
                 e = new ReturnInt(new Int(((Literal) eAsEval().e)));
             } else if (e instanceof Eval && eAsEval().e instanceof Application && eAsEval().localEnv.valueOf(((Application) eAsEval().e).f) instanceof Int) {
                 debug("(10) Eval (f {}) (f -> Int k)");
                 e = new ReturnInt((Int) eAsEval().localEnv.valueOf(((Application) eAsEval().e).f));
-            } else if (e instanceof Eval && eAsEval().e instanceof Let) {
-                debug("(3)  Eval (let ... in ...)");
-                var let = (Let) eAsEval().e;
-
-                Addr[] addrs = Arrays.stream(let.binds).map(b -> newAddr()).toArray(Addr[]::new);
-                var internalEnv = eAsEval().localEnv.copyWithExtension(Arrays.stream(let.binds).map(b -> b.var).toArray(Variable[]::new), addrs);
-                var localEnvRhs = let.isRec ? internalEnv : eAsEval().localEnv;
-
-                for (int i = 0; i < addrs.length; i++) {
-                    heap.store(addrs[i], Closure.ofCodeAndVars(let.binds[i].lf, localEnvRhs.valuesOf(let.binds[i].lf.freeVars)));
-                }
-
-                e = new Eval(let.expr, internalEnv);
             } else {
                 break;
             }
