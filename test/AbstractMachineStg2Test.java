@@ -19,6 +19,7 @@ public class AbstractMachineStg2Test {
                 {lines("stg2/simple_program_return_prim.stg"), "ReturnInt 42#"},
                 {lines("stg2/simple_program_let_and_case.stg"), "ReturnCon MkInt 42#"},
                 {lines("stg2/simple_program_let_and_case_2.stg"), "ReturnInt 42#"},
+                {lines("stg2/simple_program_primitive.stg"), "ReturnInt 42#"},
         };
     }
 

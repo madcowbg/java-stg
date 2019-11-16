@@ -90,25 +90,68 @@ public class AbstractMachine {
                 var cons = (Cons<Atom>)eAsEval().e;
                 e = new ReturnCon(new Data(cons.cons), vals(eAsEval().localEnv, globalEnv, cons.args));
             } else if (e instanceof ReturnCon && !returnStack.isEmpty()) {
-                debug("(6)  ReturnCon c ws");
                 var c = ((ReturnCon) e).cons;
                 var ws = ((ReturnCon) e).vals;
 
                 var cont = returnStack.pop();
-                var alt = findMatching(c, ws, cont.alts);
 
-                cont.localEnv.modifiedWith(alt.cons.args, ws);
-                e = new Eval(alt.expr, cont.localEnv);
-            } else if (false) {
-                // FIXME implement (7) - case descructor
-            } else if (false) {
-                // FIXME implement (8) - case default
+                var altOpt = findMatchingConstructor(c, ws, cont.alts);
+                if (altOpt.isEmpty()) {
+                    throw new ExecutionFailed("did not find matching constructor or default!");
+                }
+
+                if (altOpt.get() instanceof AlgAlt) {
+                    debug("(6)  ReturnCon c ws");
+                    var alt = (AlgAlt) altOpt.get();
+                    cont.localEnv.modifiedWith(alt.cons.args, ws);
+                    e = new Eval(alt.expr, cont.localEnv);
+                } else {
+                    assert altOpt.get() instanceof DefaultAlt;
+                    var alt = (DefaultAlt) altOpt.get();
+                    if (alt.var.isEmpty()) {
+                        debug("(7)  ReturnCon c ws");
+                        e = new Eval(alt.expr, cont.localEnv);
+                    } else {
+                        // FIXME implement (8) - case default
+                        throw new UnsupportedOperationException("default alternative not implemented for constructors!");
+                    }
+                }
             } else if (e instanceof Eval && eAsEval().e instanceof Literal) {
                 debug("(9)  Eval k #Int");
                 e = new ReturnInt(new Int(((Literal) eAsEval().e)));
             } else if (e instanceof Eval && eAsEval().e instanceof Application && eAsEval().localEnv.valueOf(((Application) eAsEval().e).f) instanceof Int) {
                 debug("(10) Eval (f {}) (f -> Int k)");
                 e = new ReturnInt((Int) eAsEval().localEnv.valueOf(((Application) eAsEval().e).f));
+            } else if (e instanceof ReturnInt && returnStack.size() > 0) {
+
+                var ri = (ReturnInt) e;
+                var cont = returnStack.pop();
+
+                var altOpt = Arrays.stream(cont.alts).filter(a -> a.matchPrim(ri.k)).findFirst();
+                if (altOpt.isEmpty()) {
+                    throw new ExecutionFailed("did not find matching primitive constructor or default!");
+                }
+                if (altOpt.get() instanceof PrimAlt) {
+                    debug("(11) ReturnInt k");
+                    var alt = (PrimAlt) altOpt.get();
+                    e = new Eval(alt.expr, cont.localEnv);
+                } else if (altOpt.get() instanceof DefaultAlt) {
+                    var alt = (DefaultAlt) altOpt.get();
+                    if (alt.var.isPresent()) {
+                        debug("(12) ReturnInt k");
+                        cont.localEnv.modify(alt.var.get(), ri.k);
+                        e = new Eval(alt.expr, cont.localEnv);
+                    } else {
+                        debug("(13) ReturnInt k");
+                        e = new Eval(alt.expr, cont.localEnv);
+                    }
+                }
+            } else if (e instanceof Eval && eAsEval().e instanceof PrimOp) {
+                debug("(14) Eval PrimOp");
+                var op = (PrimOp)eAsEval().e;
+
+                var args = eAsEval().localEnv.literalsOf(op.args);
+                e = new ReturnInt(calc(op.op, args));
             } else {
                 break;
             }
@@ -131,11 +174,21 @@ public class AbstractMachine {
         return e;
     }
 
-    private AlgAlt findMatching(Data c, Value[] xs, Alt[] alts) {
-        return (AlgAlt) Arrays.stream(alts)
-                .filter(a -> a.matches(c, xs))
-                .findFirst()
-                .orElseGet(() -> {throw new RuntimeException(); });
+    private Int calc(String op, Int[] args) throws ExecutionFailed {
+        switch(op) {
+            case "+":
+                return new Int(Arrays.stream(args).mapToInt(i -> i.value).sum());
+            case "*":
+                return new Int(Arrays.stream(args).mapToInt(i -> i.value).reduce((a, b) -> a+b).orElse(1));
+            default:
+                throw new ExecutionFailed("Unrecognized primitive: " + op);
+        }
+    }
+
+    private Optional<Alt> findMatchingConstructor(Data c, Value[] xs, Alt[] alts) {
+        return Arrays.stream(alts)
+                .filter(a -> a.matchCon(c, xs))
+                .findFirst();
     }
 
     private Value[] vals(Environment localEnv, Environment globalEnv, Atom[] args) throws ExecutionFailed {
@@ -205,19 +258,6 @@ class Heap {
 
     public boolean has(Addr a) {
         return map.containsKey(a);
-    }
-}
-
-class Int implements Value {
-    private final int value;
-
-    public Int(Literal a) {
-        this.value = a.value;
-    }
-
-    @Override
-    public String toString() {
-        return value + "#";
     }
 }
 

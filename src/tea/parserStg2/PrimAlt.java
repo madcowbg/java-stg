@@ -1,6 +1,7 @@
 package tea.parserStg2;
 
 import tea.parserStg2.machine.Data;
+import tea.parserStg2.machine.Int;
 import tea.parserStg2.machine.Value;
 
 import java.util.Arrays;
@@ -21,7 +22,13 @@ public class PrimAlt implements Alt {
     }
 
     @Override
-    public boolean matches(Data c, Value[] xs) {
+    public boolean matchCon(Data c, Value[] xs) {
         throw new RuntimeExecutionFailed("can't use primitive alternative with data constructor: " + c + Arrays.toString(xs));
+    }
+
+    @Override
+    public boolean matchPrim(Value k) {
+        assert k instanceof Int;
+        return lit.value == ((Int) k).value;
     }
 }

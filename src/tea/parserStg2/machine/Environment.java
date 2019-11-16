@@ -1,10 +1,11 @@
 package tea.parserStg2.machine;
 
+import tea.parserStg2.Atom;
+import tea.parserStg2.Literal;
 import tea.parserStg2.Variable;
 
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -62,5 +63,24 @@ public class Environment {
 
     public Map<Variable, Value> valuesOf(Variable[] vars) {
         return Arrays.stream(vars).filter(vals::containsKey).collect(Collectors.toMap(Function.identity(), vals::get));
+    }
+
+    public Int[] literalsOf(Atom[] args) throws ExecutionFailed {
+        var res = new Int[args.length];
+        for (int i = 0; i < args.length; i++) {
+            if (args[i] instanceof Literal) {
+                res[i] = new Int((Literal) args[i]);
+            } else if (args[i] instanceof Variable) {
+                var arg = vals.get((Variable)args[i]);
+                if (arg instanceof Int) {
+                    res[i] = (Int)arg;
+                } else {
+                    throw new ExecutionFailed("local environments maps " + args[i] + " to " + arg + " instead of to Int.");
+                }
+            } else {
+                throw new ExecutionFailed("unrecognized argument type: " + args[i]);
+            }
+        }
+        return res;
     }
 }
