@@ -48,9 +48,9 @@ public class Environment {
         return vals.entrySet().stream().map(e -> e.getKey() + " -> " + e.getValue()).collect(Collectors.joining(c));
     }
 
-    public void modifiedWith(Variable[] vars, LinkedList<Value> vals) {
-        assert vars.length == vals.size();
-        IntStream.range(0, vars.length).forEach(i -> this.vals.put(vars[i], vals.get(i)));
+    public void modifiedWith(Variable[] vars, Value[] vals) {
+        assert vars.length == vals.length;
+        IntStream.range(0, vars.length).forEach(i -> this.vals.put(vars[i], vals[i]));
     }
 
     public Environment copyWithExtension(Variable[] vars, Addr[] addrs) {

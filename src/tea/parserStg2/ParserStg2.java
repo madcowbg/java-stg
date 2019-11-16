@@ -3,8 +3,11 @@ package tea.parserStg2;
 import tea.tokenizer.Tokenizer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Set;
+import java.util.function.IntFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 public class ParserStg2 {
     public static final String END_OF_BIND = ";";
@@ -18,15 +21,23 @@ public class ParserStg2 {
     private static final String KWD_LETREC = "letrec";
     private static final String KWD_IN = "in";
     private static final String KWD_CASE = "case";
+    private static final String KWD_OF = "of";
     private static final String LEFT_BRACE = "(";
     private static final Object RIGHT_BRACE = ")";
 
     private static final Set<Object> PRIM_OPS = Set.of("+", "*", "-");
     private static final String START_LET_BLOCK = "{";
     private static final String END_LET_BLOCK = "}";
+    private static final String START_ALT_BLOCK = "{";
+    private static final String END_ALT_BLOCK = "}";
 
     private Set<String> CONS = Set.of(
             "MkInt", "Nil", "Cons");
+
+    private Set<String> KWDS = Set.of(
+            KWD_LET, KWD_LETREC, KWD_IN,
+            KWD_CASE, KWD_OF
+    );
 
     private final String[] tokens;
     private int ptr;
@@ -34,12 +45,12 @@ public class ParserStg2 {
     public ParserStg2(String[] lines) {
         tokens = Tokenizer.tokenize(lines);
     }
-    public Binds[] graph() throws ParsinFailed {
+    public Binds[] graph() throws ParsingFailed {
         ptr = 0;
         return readProgram();
     }
 
-    private Binds[] readProgram() throws ParsinFailed {
+    private Binds[] readProgram() throws ParsingFailed {
         var binds = new ArrayList<Binds>();
         while(!isEOF()) {
             binds.add(readBinding());
@@ -48,14 +59,14 @@ public class ParserStg2 {
         return binds.toArray(Binds[]::new);
     }
 
-    private Binds readBinding() throws ParsinFailed {
+    private Binds readBinding() throws ParsingFailed {
         var v = readVar();
         checkAndSkip(BIND_EQ::equals);
         var lf = readLambdaForm();
         return new Binds(v, lf);
     }
 
-    private LF readLambdaForm() throws ParsinFailed {
+    private LF readLambdaForm() throws ParsingFailed {
         var freeVars = readVarBlock();
         var pi = readUpdatabilityFlag();
         var boundVars = readVarBlock();
@@ -65,7 +76,7 @@ public class ParserStg2 {
         return new LF(freeVars, pi, boundVars, expr);
     }
 
-    private Expr readExpression() throws ParsinFailed {
+    private Expr readExpression() throws ParsingFailed {
         if (token().equals(KWD_LET)) {
             checkAndSkip(KWD_LET::equals);
             return readLet(false);
@@ -73,14 +84,47 @@ public class ParserStg2 {
             checkAndSkip(KWD_LETREC::equals);
             return readLet(true);
         } else if (token().equals(KWD_CASE)) {
-            fail(token());
-            return null; // TODO
+            checkAndSkip(KWD_CASE::equals);
+            var expr = readExpression();
+            checkAndSkip(KWD_OF::equals);
+            checkAndSkip(START_ALT_BLOCK::equals);
+            var alts = (isLiteral()) ? readAlts(this::readPrimAlt) : readAlts(this::readAlgAlt);
+            return new Case(expr, alts);
         } else {
             return readLitPrimConstrOrApp();
         }
     }
 
-    private Expr readLet(boolean isRec) throws ParsinFailed {
+    private AlgAlt readAlgAlt() throws ParsingFailed {
+        var cons = readConstructor(Variable[]::new);
+        checkAndSkip(RIGHTARROW::equals);
+        var expr = readExpression();
+        return new AlgAlt(cons, expr);
+    }
+
+    private PrimAlt readPrimAlt() throws ParsingFailed {
+        assert (isLiteral());
+        var lit = new Literal(tokenAndAdvance());
+        checkAndSkip(RIGHTARROW::equals);
+        var expr = readExpression();
+        return new PrimAlt(lit, expr);
+    }
+
+    interface FailableSupplier<T> {
+        T get() throws ParsingFailed;
+    }
+    
+    private Alt[] readAlts(FailableSupplier<Alt> reader) throws ParsingFailed {
+        var alts = new ArrayList<Alt>();
+        while (!token().equals(END_ALT_BLOCK)) {
+            alts.add(reader.get());
+            checkAndSkipIf(END_OF_BIND::equals);
+        }
+        checkAndSkip(END_ALT_BLOCK::equals);
+        return alts.toArray(Alt[]::new);
+    }
+
+    private Expr readLet(boolean isRec) throws ParsingFailed {
         checkAndSkip(START_LET_BLOCK::equals);
         var binds = new ArrayList<Binds>();
         while (!token().equals(END_LET_BLOCK)) {
@@ -94,7 +138,7 @@ public class ParserStg2 {
         return new Let(false, binds.toArray(Binds[]::new), expr);
     }
 
-    private Expr readLitPrimConstrOrApp() throws ParsinFailed {
+    private Expr readLitPrimConstrOrApp() throws ParsingFailed {
         if (isLiteral()) {
             return new Literal(tokenAndAdvance());
         } else if (PRIM_OPS.contains(token())) {
@@ -103,9 +147,7 @@ public class ParserStg2 {
             var args = readAtomsList();
             return new PrimOp(op, args);
         } else if (CONS.contains(token())) {
-            var cons = tokenAndAdvance();
-            var args = readAtomsList();
-            return new Cons(cons, args);
+            return readConstructor(Atom[]::new);
         } else {
             if (!isIdentifier()) {
                 fail("unsupported token application:" + token());
@@ -116,7 +158,13 @@ public class ParserStg2 {
         }
     }
 
-    private Atom[] readAtomsList() throws ParsinFailed {
+    private <T> Cons<T> readConstructor(IntFunction<T[]> sup) throws ParsingFailed {
+        var cons = tokenAndAdvance();
+        var args = readAtomsList();
+        return new Cons<T>(cons, Arrays.stream(args).toArray(sup));
+    }
+
+    private Atom[] readAtomsList() throws ParsingFailed {
         checkAndSkip(START_ATOM_BLOCK::equals);
         var args = new ArrayList<Atom>();
         while (!token().equals(END_ATOM_BLOCK)) {
@@ -131,7 +179,7 @@ public class ParserStg2 {
         return isLiteral() || isIdentifier();
     }
 
-    private Atom readAtom() throws ParsinFailed {
+    private Atom readAtom() throws ParsingFailed {
         if (isLiteral()) {
             return new Literal(tokenAndAdvance());
         } else if (isIdentifier()) {
@@ -146,7 +194,7 @@ public class ParserStg2 {
         return token().endsWith("#");
     }
 
-    private boolean readUpdatabilityFlag() throws ParsinFailed {
+    private boolean readUpdatabilityFlag() throws ParsingFailed {
         if (token().equals("\\u")) {
             advance();
             return true;
@@ -159,7 +207,7 @@ public class ParserStg2 {
         }
     }
 
-    private Variable[] readVarBlock() throws ParsinFailed {
+    private Variable[] readVarBlock() throws ParsingFailed {
         checkAndSkip(START_ATOM_BLOCK::equals);
         var vars = new ArrayList<Variable>();
         while (!token().equals(END_ATOM_BLOCK)) {
@@ -176,7 +224,7 @@ public class ParserStg2 {
         }
     }
 
-    private Variable readVar() throws ParsinFailed {
+    private Variable readVar() throws ParsingFailed {
         if (!isIdentifier()) {
             fail("invalid variable name: `" + token() + "`");
         }
@@ -184,7 +232,7 @@ public class ParserStg2 {
     }
 
     private boolean isIdentifier() {
-        return token().matches("^[a-zA-Z_][a-zA-Z_0-9]*$") && !CONS.contains(token());
+        return token().matches("^[a-zA-Z_][a-zA-Z_0-9]*$") && !CONS.contains(token()) && !KWDS.contains(token());
     }
 
     private String tokenAndAdvance() {
@@ -197,7 +245,7 @@ public class ParserStg2 {
         ptr ++;
     }
 
-    private void checkAndSkip(Predicate<String> check) throws ParsinFailed {
+    private void checkAndSkip(Predicate<String> check) throws ParsingFailed {
         if (isEOF()) {
             fail("can't read past EOF!");
         }
@@ -214,8 +262,8 @@ public class ParserStg2 {
         return tokens[ptr];
     }
 
-    private void fail(String msg) throws ParsinFailed {
-        throw new ParsinFailed(msg);
+    private void fail(String msg) throws ParsingFailed {
+        throw new ParsingFailed(msg);
     }
 
     private boolean isEOF() {

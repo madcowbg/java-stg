@@ -53,7 +53,10 @@ public class AbstractMachine {
 
                 var closure = heap.at(eAsEnter().a);
                 var xs = closure.codePointer.boundVars;
-                assert argumentStack.size() >= xs.length : "can't execute with insufficient argument stack!";
+                if (!(argumentStack.size() >= xs.length)) {
+                    debug(this.toString());
+                    throw new ExecutionFailed("can't execute with insufficient argument stack!");
+                }
 
                 // get arguments from stack...
                 var ws_a = new LinkedList<Value>();
@@ -61,8 +64,28 @@ public class AbstractMachine {
                     ws_a.push(argumentStack.pop());
                 }
                 var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
-                localEnv.modifiedWith(closure.codePointer.boundVars, ws_a);
+                localEnv.modifiedWith(closure.codePointer.boundVars, ws_a.toArray(Value[]::new));
                 e = new Eval(closure.codePointer.expr, localEnv);
+            } else if (e instanceof Eval && eAsEval().e instanceof Case) {
+                debug("(4)  Eval (case e of alts) rho");
+                var case_ = (Case) eAsEval().e;
+
+                returnStack.push(new Continuation(case_.alts, eAsEval().localEnv));
+                e = new Eval(case_.expr, eAsEval().localEnv);
+            } else if (e instanceof Eval && eAsEval().e instanceof Cons) {
+                debug("(5)  Eval (c xs) rho");
+                var cons = (Cons<Atom>)eAsEval().e;
+                e = new ReturnCon(new Data(cons.cons), vals(eAsEval().localEnv, globalEnv, cons.args));
+            } else if (e instanceof ReturnCon && !returnStack.isEmpty()) {
+                debug("(6)  ReturnCon c ws");
+                var c = ((ReturnCon) e).cons;
+                var ws = ((ReturnCon) e).vals;
+
+                var cont = returnStack.pop();
+                var alt = findMatching(c, ws, cont.alts);
+
+                cont.localEnv.modifiedWith(alt.cons.args, ws);
+                e = new Eval(alt.expr, cont.localEnv);
             } else if (e instanceof Eval && eAsEval().e instanceof Literal) {
                 debug("(9)  Eval k #Int");
                 e = new ReturnInt(new Int(((Literal) eAsEval().e)));
@@ -87,12 +110,36 @@ public class AbstractMachine {
             }
         }
 
-        debug(this.toString());
-        if (!(e instanceof Eval || e instanceof ReturnInt)) {
+        if (argumentStack.size() > 0) {
+            debug(this.toString());
+            throw new ExecutionFailed("Execution stopped with non-empty argument stack: " + Arrays.toString(argumentStack.toArray()));
+        }
+        if (updateStack.size() > 0) {
+            debug(this.toString());
+            throw new ExecutionFailed("Execution stopped with non-empty update stack: " + Arrays.toString(updateStack.toArray()));
+        }
+        if (!(e instanceof ReturnInt || e instanceof ReturnCon)) {
+            debug(this.toString());
             throw new ExecutionFailed("Execution stopped at improper state: " + e);
         }
 
-        return e instanceof Eval ? eAsEval().e : ((ReturnInt) e).k;
+        debug(this.toString());
+        return e;
+    }
+
+    private AlgAlt findMatching(Data c, Value[] xs, Alt[] alts) {
+        return (AlgAlt) Arrays.stream(alts)
+                .filter(a -> a.matches(c, xs))
+                .findFirst()
+                .orElseGet(() -> {throw new RuntimeException(); });
+    }
+
+    private Value[] vals(Environment localEnv, Environment globalEnv, Atom[] args) throws ExecutionFailed {
+        var res = new Value[args.length];
+        for (int i = 0; i < args.length; i++) {
+            res[i] = val(localEnv, globalEnv, args[i]);
+        }
+        return res;
     }
 
     private Enter eAsEnter() {

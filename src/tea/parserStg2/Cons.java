@@ -3,7 +3,7 @@ package tea.parserStg2;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-public class Cons implements Expr {
+public class Cons<Atom> implements Expr {
     public final String cons;
     public final Atom[] args;
 

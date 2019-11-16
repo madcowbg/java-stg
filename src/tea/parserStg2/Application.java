@@ -14,6 +14,6 @@ public class Application implements Expr {
 
     @Override
     public String toString() {
-        return f + Arrays.stream(args).map(Atom::toString).collect(Collectors.joining(", ", "{", "}"));
+        return f + " " + Arrays.stream(args).map(Atom::toString).collect(Collectors.joining(", ", "{", "}"));
     }
 }
