@@ -6,4 +6,9 @@ public class Enter implements Code {
     public Enter(Addr a) {
         this.a = a;
     }
+
+    @Override
+    public String toString() {
+        return "Enter " + a;
+    }
 }

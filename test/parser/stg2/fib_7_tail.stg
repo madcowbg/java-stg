@@ -1,0 +1,14 @@
+# FIB TAIL CALL
+
+fib2 = {} \n {k f_n_1 f_n_2} -> case k {} of {
+    0# -> f_n_2 {};
+    kv -> case - {kv 1#} of {
+        kv1 -> case + {f_n_1 f_n_2} of {
+            f_n -> fib2 {kv1 f_n f_n_1}
+        }
+    }
+};
+
+fib = {} \n {x} -> fib2 {x 1# 1#};
+
+main = {} \n {} -> fib {7#};
