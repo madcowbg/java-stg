@@ -1,8 +1,9 @@
 
-part = {} \n {f x y} -> let {g = f {x}} in g {y};
+part = {} \n {f x y} -> let {g = {f x} \n {} -> f {x}} in g {y};
 
+# function with wrong arity, just to mess with the machine...
 f = {} \n {} -> 5#;
 
-sum = {} \n {x} -> let {g = {x} \n {y} -> + {x y}} in g;
+curried_sum = {} \n {x} -> let {g = {x} \n {y} -> + {x y}} in g {};
 
-main = {} \n {} -> part {sum 34# 8#};
+main = {} \n {} -> part {curried_sum 34# 8#};
