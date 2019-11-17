@@ -1,6 +1,7 @@
-package tea.parserStg2.machine;
+package tea.stg2.machine.state;
 
-import tea.parserStg2.Literal;
+import tea.stg2.machine.value.Value;
+import tea.stg2.parser.expr.Literal;
 
 public class Int implements Value {
     public final int value;

@@ -1,7 +1,8 @@
-package tea.parserStg2;
+package tea.stg2.parser.expr;
 
-import tea.parserStg2.machine.Data;
-import tea.parserStg2.machine.Value;
+import tea.stg2.machine.state.Data;
+import tea.stg2.machine.value.Value;
+import tea.stg2.parser.alt.Alt;
 
 import java.util.Optional;
 
