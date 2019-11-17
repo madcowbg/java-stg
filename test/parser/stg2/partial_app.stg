@@ -1,0 +1,8 @@
+
+part = {} \n {f x y} -> let {g = f {x}} in g {y};
+
+f = {} \n {} -> 5#;
+
+sum = {} \n {x} -> let {g = {x} \n {y} -> + {x y}} in g;
+
+main = {} \n {} -> part {sum 34# 8#};
