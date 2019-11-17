@@ -5,6 +5,7 @@ import tea.stg2.parser.alt.Alt;
 import tea.stg2.parser.alt.DefaultAlt;
 import tea.stg2.parser.alt.PrimAlt;
 import tea.stg2.parser.expr.*;
+import tea.tokenizer.AnnotatedToken;
 import tea.tokenizer.Tokenizer;
 
 import java.util.ArrayList;
@@ -45,11 +46,11 @@ public class Parser {
             KWD_CASE, KWD_OF, KWD_DEFAULT
     );
 
-    private final String[] tokens;
+    private final AnnotatedToken[] tokens;
     private int ptr;
 
     public Parser(String[] lines) {
-        tokens = Tokenizer.tokenize(lines);
+        tokens = Tokenizer.tokenizeAnnotated(lines);
     }
     public Binds[] graph() throws ParsingFailed {
         ptr = 0;
@@ -285,10 +286,12 @@ public class Parser {
 
     private String token() {
         assert !isEOF();
-        return tokens[ptr];
+        return tokens[ptr].text();
     }
 
     private void fail(String msg) throws ParsingFailed {
+        var tokenContext = !isEOF() ? tokens[ptr] : tokens[tokens.length - 1];
+        System.err.println(tokenContext.context(20, 20));
         throw new ParsingFailed(msg);
     }
 
