@@ -3,8 +3,8 @@ package parser;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.parserStg2.ParserStg2;
-import tea.parserStg2.ParsingFailed;
+import tea.stg2.parser.Parser;
+import tea.stg2.parser.ParsingFailed;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -23,7 +23,7 @@ public class ParseStg2Test {
 
     @Test(dataProvider = "readToGraph")
     void readToGraph(String[] lines, String expected) throws ParsingFailed {
-        var bindings = new ParserStg2(lines).graph();
+        var bindings = new Parser(lines).graph();
         Assert.assertEquals(Arrays.toString(bindings), expected);
     }
 }

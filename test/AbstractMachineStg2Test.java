@@ -1,10 +1,10 @@
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.parserStg2.ParserStg2;
-import tea.parserStg2.ParsingFailed;
-import tea.parserStg2.machine.AbstractMachine;
-import tea.parserStg2.machine.ExecutionFailed;
+import tea.stg2.parser.Parser;
+import tea.stg2.parser.ParsingFailed;
+import tea.stg2.machine.AbstractMachine;
+import tea.stg2.machine.ExecutionFailed;
 
 import java.io.IOException;
 
@@ -27,7 +27,7 @@ public class AbstractMachineStg2Test {
 
     @Test(dataProvider = "runAbstractMachineCases")
     void runAbstractMachine(String[] lines, String expectedResult) throws ParsingFailed, ExecutionFailed {
-        var graph = new ParserStg2(lines).graph();
+        var graph = new Parser(lines).graph();
         var machine = new AbstractMachine(graph);
 
         System.out.println(machine);
