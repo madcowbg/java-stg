@@ -23,8 +23,12 @@ public class AlgAlt implements Alt {
 
     @Override
     public boolean matchCon(Data c, Value[] xs) {
-        assert cons.args.length == xs.length;
-        return cons.cons.equals(c.cons);
+        if (cons.cons.equals(c.cons)) {
+            assert cons.args.length == xs.length : "constructor arity is " + cons.args.length + " but requested with " + xs.length + " parameters!";
+            return true;
+        } else {
+            return false;
+        }
     }
 
     @Override
