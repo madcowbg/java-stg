@@ -14,6 +14,9 @@ import tea.stg2.parser.alt.PrimAlt;
 import tea.stg2.parser.expr.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class AbstractMachine {
     private int nextAddr = 0;
@@ -34,7 +37,6 @@ public class AbstractMachine {
             globalEnv.modify(v, addr);
             heap.store(addr, Closure.ofCode(bind.lf));
         }
-
     }
 
     private Addr newAddr() {
@@ -57,19 +59,13 @@ public class AbstractMachine {
                     argumentStack.push(val(eval.localEnv, globalEnv, x));
                 }
                 e = new Enter(a);
-            } else if (e instanceof Enter && heap.has(eAsEnter().a)) {
-                debug("(2)  Enter a");
+            } else if (e instanceof Enter && heap.has(eAsEnter().a) && !heap.at(eAsEnter().a).codePointer.isUpdatable && (argumentStack.size() >= heap.at(eAsEnter().a).codePointer.boundVars.length)) {
+                debug("(2)  Enter a # a is non-updatable");
 
                 var closure = heap.at(eAsEnter().a);
-                var xs = closure.codePointer.boundVars;
-                if (!(argumentStack.size() >= xs.length)) {
-                    debug(this.toString());
-                    throw new ExecutionFailed("can't execute with insufficient argument stack!");
-                }
-
                 // get arguments from stack...
                 var ws_a = new LinkedList<Value>();
-                for(var x: xs) {
+                for(var x: closure.codePointer.boundVars) {
                     ws_a.push(argumentStack.pop());
                 }
                 var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
@@ -161,6 +157,61 @@ public class AbstractMachine {
 
                 var args = eAsEval().localEnv.literalsOf(op.args);
                 e = new ReturnInt(calc(op.op, args));
+            } else if (e instanceof Enter && heap.has(eAsEnter().a) && heap.at(eAsEnter().a).codePointer.isUpdatable && heap.at(eAsEnter().a).codePointer.boundVars.length == 0) {
+                debug("(15)  Enter a # a is updatable without bound vars");
+
+                var closure = heap.at(eAsEnter().a);
+
+                updateStack.push(new UpdateFrame(argumentStack, returnStack, eAsEnter().a));
+                argumentStack = new Stack<>();
+                returnStack = new Stack<>();
+
+                var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
+                e = new Eval(closure.codePointer.expr, localEnv);
+            } else if (e instanceof ReturnCon && returnStack.isEmpty() && !updateStack.isEmpty()) {
+                debug("(16)  ReturnCon # with empty returnStack");
+                assert argumentStack.isEmpty() : "trying ReturnCon with empty return stack but non-empty argument stack!";
+
+                var frame = updateStack.pop();
+
+                var rc = (ReturnCon) e;
+                var ws = rc.vals;
+                var vs = IntStream.range(0, ws.length).mapToObj(i -> Variable.ofName("_hv_" + i)).toArray(Variable[]::new);
+                var boundValues = IntStream.range(0, ws.length).boxed().collect(Collectors.toMap(i -> vs[i], i -> ws[i]));
+                var closure = Closure.ofCodeAndVars(new LambdaForm(vs, false, new Variable[0], new Cons<>(rc.cons.cons, vs)), boundValues);
+
+                heap.store(frame.a, closure);
+                argumentStack = frame.argumentStack;
+                returnStack = frame.returnStack;
+                e = new ReturnCon(rc.cons, rc.vals);
+            } else if (e instanceof Enter && returnStack.isEmpty() && !updateStack.isEmpty() && heap.has(eAsEnter().a) && !heap.at(eAsEnter().a).codePointer.isUpdatable && (argumentStack.size() < heap.at(eAsEnter().a).codePointer.boundVars.length)) {
+                debug("(17)  Enter a # with insufficient returnStack");
+
+                var closure = heap.at(eAsEnter().a);
+                var frame = updateStack.pop();
+
+                // as ++ as_u
+                var as = argumentStack;
+                argumentStack = frame.argumentStack;
+                for (var a: as) {
+                    argumentStack.push(a);
+                }
+                returnStack = frame.returnStack;
+                var f = Variable.ofName("_hidden_f");
+                var xs = closure.codePointer.freeVars;
+                var ws_f = closure.freeVars;
+
+                var xs_1 = IntStream.range(0, as.size()).mapToObj(i -> Variable.ofName("_hv_" + i)).toArray(Variable[]::new);
+                var f_xs1 = Stream.concat(Stream.of(f), Stream.of(xs_1)).toArray(Variable[]::new);
+
+                var boundVals = new HashMap<Variable, Value>();
+                boundVals.put(f, eAsEnter().a);
+                for (int i = 0; i < xs_1.length; i++) {
+                    boundVals.put(xs_1[i], as.get(i));
+                }
+
+                heap.store(frame.a, Closure.ofCodeAndVars(new LambdaForm(f_xs1, false, new Variable[0], new Application(f, xs_1)), boundVals));
+                e = new Enter(eAsEnter().a);
             } else {
                 break;
             }

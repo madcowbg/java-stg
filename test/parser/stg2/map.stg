@@ -28,5 +28,6 @@ sum = {} \n {xs} -> case xs {} of {
 # main = {} \n {} -> sum {elem_3};
 
 inc3 = {} \n {ys} -> inc {ys 4#};
-incd = {} \n {} -> map {inc3 elem_3};
-main = {} \n {} -> sum {incd};
+incd = {} \u {} -> map {inc3 elem_3};
+# main = {} \n {} -> sum {incd};
+main = {} \u {} -> case sum {incd} of {x -> MkInt {x}};

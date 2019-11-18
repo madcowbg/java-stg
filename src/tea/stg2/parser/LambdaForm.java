@@ -9,20 +9,20 @@ import java.util.stream.Collectors;
 
 public class LambdaForm {
     public final Variable[] freeVars;
-    public final boolean pi;
+    public final boolean isUpdatable;
     public final Variable[] boundVars;
     public final Expr expr;
 
-    public LambdaForm(Variable[] freeVars, boolean pi, Variable[] boundVars, Expr expr) {
+    public LambdaForm(Variable[] freeVars, boolean isUpdatable, Variable[] boundVars, Expr expr) {
         this.freeVars = freeVars;
-        this.pi = pi;
+        this.isUpdatable = isUpdatable;
         this.boundVars = boundVars;
         this.expr = expr;
     }
 
     @Override
     public String toString() {
-        return dump(freeVars, v -> v.name) + " " + (pi ? "\\u" : "\\n") + " " + dump(boundVars, v -> v.name) + " -> " + expr.toString();
+        return dump(freeVars, v -> v.name) + " " + (isUpdatable ? "\\u" : "\\n") + " " + dump(boundVars, v -> v.name) + " -> " + expr.toString();
     }
 
     private static <T> String dump(T[] freeVars, Function<T, String> printf) {
