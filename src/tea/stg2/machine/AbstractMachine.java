@@ -29,7 +29,7 @@ public class AbstractMachine {
     private Environment globalEnv = Environment.newEmpty();
     private int iter = 0;
 
-    public AbstractMachine(Binds[] program) {
+    public AbstractMachine(Bind[] program) {
         for (var bind: program) {
             var v = bind.var;
             var addr = newAddr();

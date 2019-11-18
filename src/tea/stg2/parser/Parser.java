@@ -52,25 +52,25 @@ public class Parser {
     public Parser(String[] lines) {
         tokens = Tokenizer.tokenizeAnnotated(lines);
     }
-    public Binds[] graph() throws ParsingFailed {
+    public Bind[] graph() throws ParsingFailed {
         ptr = 0;
         return readProgram();
     }
 
-    private Binds[] readProgram() throws ParsingFailed {
-        var binds = new ArrayList<Binds>();
+    private Bind[] readProgram() throws ParsingFailed {
+        var binds = new ArrayList<Bind>();
         while(!isEOF()) {
             binds.add(readBinding());
             checkAndSkip(END_OF_BIND::equals);
         }
-        return binds.toArray(Binds[]::new);
+        return binds.toArray(Bind[]::new);
     }
 
-    private Binds readBinding() throws ParsingFailed {
+    private Bind readBinding() throws ParsingFailed {
         var v = readVar();
         checkAndSkip(BIND_EQ::equals);
         var lf = readLambdaForm();
-        return new Binds(v, lf);
+        return new Bind(v, lf);
     }
 
     private LambdaForm readLambdaForm() throws ParsingFailed {
@@ -153,7 +153,7 @@ public class Parser {
 
     private Expr readLet(boolean isRec) throws ParsingFailed {
         checkAndSkip(START_LET_BLOCK::equals);
-        var binds = new ArrayList<Binds>();
+        var binds = new ArrayList<Bind>();
         while (!token().equals(END_LET_BLOCK)) {
             binds.add(readBinding());
             checkAndSkipIf(END_OF_BIND::equals);
@@ -162,7 +162,7 @@ public class Parser {
         checkAndSkip(KWD_IN::equals);
 
         var expr = readExpression();
-        return new Let(false, binds.toArray(Binds[]::new), expr);
+        return new Let(false, binds.toArray(Bind[]::new), expr);
     }
 
     private Expr readLitPrimConstrOrApp() throws ParsingFailed {
