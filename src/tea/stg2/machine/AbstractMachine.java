@@ -178,7 +178,12 @@ public class AbstractMachine {
                 var ws = rc.vals;
                 var vs = IntStream.range(0, ws.length).mapToObj(i -> Variable.ofName("_hv_" + i)).toArray(Variable[]::new);
                 var boundValues = IntStream.range(0, ws.length).boxed().collect(Collectors.toMap(i -> vs[i], i -> ws[i]));
-                var closure = Closure.ofCodeAndVars(new LambdaForm(vs, false, new Variable[0], new Cons<>(rc.cons.cons, vs)), boundValues);
+                Closure closure = null;
+                try {
+                    closure = Closure.ofCodeAndVars(new LambdaForm(vs, false, new Variable[0], new Cons<>(rc.cons.cons, vs)), boundValues);
+                } catch (ParsingFailed parsingFailed) {
+                    throw new ExecutionFailed(parsingFailed);
+                }
 
                 heap.store(frame.a, closure);
                 argumentStack = frame.argumentStack;
@@ -210,7 +215,11 @@ public class AbstractMachine {
                     boundVals.put(xs_1[i], as.get(i));
                 }
 
-                heap.store(frame.a, Closure.ofCodeAndVars(new LambdaForm(f_xs1, false, new Variable[0], new Application(f, xs_1)), boundVals));
+                try {
+                    heap.store(frame.a, Closure.ofCodeAndVars(new LambdaForm(f_xs1, false, new Variable[0], new Application(f, xs_1)), boundVals));
+                } catch (ParsingFailed parsingFailed) {
+                    throw new ExecutionFailed(parsingFailed);
+                }
                 e = new Enter(eAsEnter().a);
             } else {
                 break;

@@ -13,11 +13,14 @@ public class LambdaForm {
     public final Variable[] boundVars;
     public final Expr expr;
 
-    public LambdaForm(Variable[] freeVars, boolean isUpdatable, Variable[] boundVars, Expr expr) {
+    public LambdaForm(Variable[] freeVars, boolean isUpdatable, Variable[] boundVars, Expr expr) throws ParsingFailed {
         this.freeVars = freeVars;
         this.isUpdatable = isUpdatable;
         this.boundVars = boundVars;
         this.expr = expr;
+        if (boundVars.length > 0 && isUpdatable) {
+            throw new ParsingFailed("can't have updatable lambda form with bound variables: " + this.toString());
+        }
     }
 
     @Override
