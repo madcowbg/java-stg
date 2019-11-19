@@ -8,8 +8,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static tea.tokenizer.Tokenizer.tokenize;
 
@@ -44,10 +46,14 @@ public class StringParserTest {
     }
 
 
-    public static String[] lines(String path) throws IOException {
-        try (var reader = resourceStream(path)) {
-            return new BufferedReader(new InputStreamReader(reader)).lines().toArray(String[]::new);
+    public static String[] lines(String... paths) throws IOException {
+        var lines = new ArrayList<String>();
+        for (var path: paths) {
+            try (var reader = resourceStream(path)) {
+                lines.addAll(new BufferedReader(new InputStreamReader(reader)).lines().collect(Collectors.toList()));
+            }
         }
+        return lines.toArray(String[]::new);
     }
 
     private static InputStream resourceStream(String path) {

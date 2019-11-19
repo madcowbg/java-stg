@@ -1,0 +1,26 @@
+### MAP, LIST AND SUMS ###
+
+nil = {} \n {} -> Nil {};
+
+list3 = {} \n {x y z} ->
+    let {tz = {nil z} \n {} -> Cons {z nil}}
+    in let {ty = {tz y} \n {} -> Cons {y tz}}
+    in let {tx = {ty x} \n {} -> Cons {x ty}}
+    in tx {};
+
+map = {} \n {f xs} -> case xs {} of {
+    Nil {} -> Nil {};
+    Cons {y ys} -> let {
+        fy = {f y} \n {} -> f {y};
+        mfy = {f ys} \n {} -> map {f ys}
+    } in Cons {fy mfy}
+};
+
+sum = {} \n {xs} -> case xs {} of {
+    Nil {} -> 0#;
+    Cons {y ys} -> case y {} of {
+        v -> case sum {ys} of {
+            sy -> + {v sy}
+        }
+    }
+};
