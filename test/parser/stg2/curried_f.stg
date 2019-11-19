@@ -1,0 +1,6 @@
+# ((f x) y)
+
+add = {} \n {x y} -> + {x y};
+curried_f = {} \n {} -> let {g = {} \n {y} -> add {3# y}} in g {};
+
+main = {} \n {} -> curried_f {5#};

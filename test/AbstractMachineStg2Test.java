@@ -24,6 +24,8 @@ public class AbstractMachineStg2Test {
                 {lines("stg2/fib_7_tail.stg"), "ReturnInt 21#"},
                 {lines("stg2/partial_app.stg"), "ReturnInt 42#"},
                 {lines("stg2/map.stg"), "ReturnCon MkInt 42#"},
+                {lines("stg2/curried_f.stg"), "ReturnInt 8#"},
+                {lines("stg2/compile_to_stg.stg"), "ReturnInt 12#"},
         };
     }
 

@@ -1,9 +1,17 @@
 ### MAPS AND SUMS ###
 
 nil = {} \n {} -> Nil {};
-elem_1 = {} \n {} -> Cons {4# nil};
-elem_2 = {} \n {} -> Cons {10# elem_1};
-elem_3 = {} \n {} -> Cons {16# elem_2};
+# elem_1 = {nil} \n {} -> Cons {4# nil};
+# elem_2 = {elem_1} \n {} -> Cons {10# elem_1};
+# elem_3 = {elem_2} \n {} -> Cons {16# elem_2};
+
+list3 = {} \n {x y z} ->
+    let {tz = {nil z} \n {} -> Cons {z nil}}
+    in let {ty = {tz y} \n {} -> Cons {y tz}}
+    in let {tx = {ty x} \n {} -> Cons {x ty}}
+    in tx {};
+
+elem_3 = {} \n {} -> list3 {16# 10# 4#};
 
 inc = {} \n {x i} -> case + {x i} of {v -> v {}};
 
