@@ -1,0 +1,6 @@
+# value f = ((f x) y)
+
+add = {} \n {x y} -> + {x y};
+add_5 = {} \n {y} -> add {5# y};
+
+main = {} \n {} -> add_5 {7#};
