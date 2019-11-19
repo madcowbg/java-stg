@@ -68,7 +68,7 @@ public class AbstractMachine {
                 for(var x: closure.codePointer.boundVars) {
                     ws_a.push(argumentStack.pop());
                 }
-                var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
+                var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVarValues);
                 localEnv.modifiedWith(closure.codePointer.boundVars, ws_a.toArray(Value[]::new));
                 e = new Eval(closure.codePointer.expr, localEnv);
             } else if (e instanceof Eval && eAsEval().e instanceof Let) {
@@ -166,7 +166,7 @@ public class AbstractMachine {
                 argumentStack = new Stack<>();
                 returnStack = new Stack<>();
 
-                var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVars);
+                var localEnv = Environment.newWith(closure.codePointer.freeVars, closure.freeVarValues);
                 e = new Eval(closure.codePointer.expr, localEnv);
             } else if (e instanceof ReturnCon && returnStack.isEmpty() && !updateStack.isEmpty()) {
                 debug("(16)  ReturnCon # with empty returnStack");
@@ -203,8 +203,6 @@ public class AbstractMachine {
                 }
                 returnStack = frame.returnStack;
                 var f = Variable.ofName("_hidden_f");
-                var xs = closure.codePointer.freeVars;
-                var ws_f = closure.freeVars;
 
                 var xs_1 = IntStream.range(0, as.size()).mapToObj(i -> Variable.ofName("_hv_" + i)).toArray(Variable[]::new);
                 var f_xs1 = Stream.concat(Stream.of(f), Stream.of(xs_1)).toArray(Variable[]::new);

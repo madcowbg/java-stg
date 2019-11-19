@@ -26,9 +26,12 @@ public class Environment {
         return new Environment(new HashMap<>());
     }
 
-    public static Environment newWith(Variable[] vars, Map<Variable, Value> values) {
-        return new Environment(
-                Arrays.stream(vars).filter(values::containsKey).collect(Collectors.toMap(Function.identity(), values::get)));
+    public static Environment newWith(Variable[] vars, Value[] values) {
+        assert vars.length == values.length;
+        return new Environment(IntStream.range(0, vars.length)
+                .filter(i -> values[i] != null)
+                .boxed()
+                .collect(Collectors.toMap(i -> vars[i], i -> values[i])));
     }
 
     public void modify(Variable variable, Value value) {
