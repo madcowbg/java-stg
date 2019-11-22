@@ -28,6 +28,9 @@ public class ParseCoreTest {
     public static Object[][] compileToStg() throws IOException {
         return new Object[][]{
                 {lines("core/first.c"), "first = {}\\n{x y} -> x {};\nmain = {}\\n{} -> first {5# 10#};\n"},
+                {lines("core/complex_args.c"), "sum = {}\\n{x y} -> + {x y};\n" +
+                        "sum3_snd = {}\\n{x y z} -> case sum {x y} of {_hid_0 -> sum {_hid_0 z}};\n" +
+                        "main = {}\\n{} -> sum3_snd {5# 8# 29#};\n"},
         };
     }
 

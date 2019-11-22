@@ -2,10 +2,7 @@ package tea.core;
 
 import tea.core.source.*;
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
-import java.util.Stack;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -14,6 +11,7 @@ public class CoreCompiler {
 
     private final Map<String, Identifier> globals;
     private final String compiled;
+    private int newVar = 0;
 
     public CoreCompiler(Bind[] binds) throws CompileFailed {
         this.globals = Arrays.stream(binds).map(b -> b.var.f).collect(Collectors.toMap(i -> i.name, Function.identity()));
@@ -67,7 +65,7 @@ public class CoreCompiler {
     }
 
     private String compilePrimOpApp(PrimOpApp app, Stack<Set<String>> localEnv) {
-        if (Arrays.stream(app.args).allMatch(((Predicate<Expr>)Variable.class::isInstance).or(Literal.class::isInstance))) {
+        if (Arrays.stream(app.args).allMatch(CoreCompiler::isValue)) {
             var op = app.op;
             return op + " " + argsToString(app.args, localEnv);
         } else {
@@ -75,11 +73,36 @@ public class CoreCompiler {
         }
     }
 
+    private static boolean isValue(Expr expr) {
+        return ((Predicate<Expr>)Variable.class::isInstance).or(Literal.class::isInstance).test(expr);
+    }
+
     private String compileApplication(Application app, Stack<Set<String>> localEnv) throws CompileFailed {
-        if (app.f instanceof Variable && Arrays.stream(app.args).allMatch(((Predicate<Expr>)Variable.class::isInstance).or(Literal.class::isInstance))) {
+        if (app.f instanceof Variable) {
+            var saturatedArgs = app.args.clone();
+            var caseEvalStack = new Stack<String>();
+            localEnv.push(new HashSet<>());
+            for(int i = 0; i < saturatedArgs.length; i++) {
+                if (isValue(saturatedArgs[i])) {
+                    // do nothing
+                } else if (saturatedArgs[i] instanceof Application) {
+                    var variable = new Variable("_hid_" + (newVar++));
+                    var caseEval = "case " + compileApplication((Application)saturatedArgs[i], localEnv) +
+                            " of {" + variable.name + " -> ";
+                    saturatedArgs[i] = variable;
+                    localEnv.peek().add(variable.name);
+                    caseEvalStack.push(caseEval);
+                } else {
+                    throw new CompileFailed("unsupported argument: " + saturatedArgs[i]);
+                }
+            }
             assertVariableDefined((Variable) app.f, localEnv);
             var f = ((Variable) app.f);
-            return f.name + " " + argsToString(app.args, localEnv);
+            var appString = f.name + " " + argsToString(saturatedArgs, localEnv);
+            localEnv.pop();
+            return caseEvalStack.stream().collect(Collectors.joining(" ")) +
+                appString
+                + caseEvalStack.stream().map(s -> "}").collect(Collectors.joining(""));
         } else {
             throw new CompileFailed("unsupported application: " + app.toString());
         }

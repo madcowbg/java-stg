@@ -18,6 +18,7 @@ public class AbstractMachineCore {
         return new Object[][]{
                 {lines("core/first.c"), "ReturnInt 5#"},
                 {lines("core/calculation.c"), "ReturnInt 42#"},
+                {lines("core/complex_args.c"), "ReturnInt 42#"},
 //                {lines("core/lambda.c"), "ReturnInt 5#"},
         };
     }
