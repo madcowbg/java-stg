@@ -1,3 +1,4 @@
+### LAMBDA ###
 # define one function
 sum3 x y z = (+ x y z);
 

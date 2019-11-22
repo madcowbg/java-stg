@@ -291,7 +291,7 @@ public class Parser {
 
     private void fail(String msg) throws ParsingFailed {
         var tokenContext = !isEOF() ? tokens[ptr] : tokens[tokens.length - 1];
-        System.err.println(tokenContext.context(20, 20));
+        System.err.println(tokenContext.context(30, 30));
         throw new ParsingFailed(msg);
     }
 
