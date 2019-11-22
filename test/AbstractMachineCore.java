@@ -17,6 +17,8 @@ public class AbstractMachineCore {
     public static Object[][] executeCompiledStg() throws IOException {
         return new Object[][]{
                 {lines("core/first.c"), "ReturnInt 5#"},
+                {lines("core/calculation.c"), "ReturnInt 42#"},
+//                {lines("core/lambda.c"), "ReturnInt 5#"},
         };
     }
 

@@ -43,6 +43,8 @@ public class CoreCompiler {
             return compileVariable((Variable) expr, localEnv);
         } else if (expr instanceof Application) {
             return compileApplication((Application)expr, localEnv);
+        } else if (expr instanceof PrimOpApp) {
+            return compilePrimOpApp((PrimOpApp)expr, localEnv);
         } else {
             throw new CompileFailed("unrecognized expression: " + expr);
         }
@@ -64,16 +66,29 @@ public class CoreCompiler {
         return "" + expr.value + "#";
     }
 
+    private String compilePrimOpApp(PrimOpApp app, Stack<Set<String>> localEnv) {
+        if (Arrays.stream(app.args).allMatch(((Predicate<Expr>)Variable.class::isInstance).or(Literal.class::isInstance))) {
+            var op = app.op;
+            return op + " " + argsToString(app.args, localEnv);
+        } else {
+            throw new CompileFailed("unsupported application: " + app.toString());
+        }
+    }
+
     private String compileApplication(Application app, Stack<Set<String>> localEnv) throws CompileFailed {
         if (app.f instanceof Variable && Arrays.stream(app.args).allMatch(((Predicate<Expr>)Variable.class::isInstance).or(Literal.class::isInstance))) {
             assertVariableDefined((Variable) app.f, localEnv);
             var f = ((Variable) app.f);
-            return f.name + " " + Arrays.stream(app.args)
-                    .map(compileValue(localEnv))
-                    .collect(Collectors.joining(" ", "{", "}"));
+            return f.name + " " + argsToString(app.args, localEnv);
         } else {
             throw new CompileFailed("unsupported application: " + app.toString());
         }
+    }
+
+    private String argsToString(Expr[] args, Stack<Set<String>> localEnv) {
+        return Arrays.stream(args)
+                .map(compileValue(localEnv))
+                .collect(Collectors.joining(" ", "{", "}"));
     }
 
     private Function<Expr, String> compileValue(Stack<Set<String>> localEnv) {
