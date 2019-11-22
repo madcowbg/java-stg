@@ -1,15 +1,15 @@
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.machine.AbstractMachine;
-import tea.machine.ExecutionFailed;
-import tea.program.LoadingFailed;
-import tea.program.Program;
+import tea.stg1.machine.AbstractMachine;
+import tea.stg1.machine.ExecutionFailed;
+import tea.stg1.program.LoadingFailed;
+import tea.stg1.program.Program;
 
 import java.io.IOException;
 
 import static parser.StringParserTest.lines;
-import static tea.parser.ParserStg1.readToGraph;
+import static tea.stg1.parser.ParserStg1.readToGraph;
 
 public class AbstractMachineTest {
 

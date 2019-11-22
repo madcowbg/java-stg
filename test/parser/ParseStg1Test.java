@@ -3,7 +3,7 @@ package parser;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import tea.parser.ParserStg1;
+import tea.stg1.parser.ParserStg1;
 
 import java.io.IOException;
 import java.util.Arrays;
