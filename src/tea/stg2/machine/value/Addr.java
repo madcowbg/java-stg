@@ -13,6 +13,11 @@ public class Addr implements Value {
     }
 
     @Override
+    public int hashCode() {
+        return addr;
+    }
+
+    @Override
     public String toString() {
         return "@" + Integer.toHexString(addr);
     }

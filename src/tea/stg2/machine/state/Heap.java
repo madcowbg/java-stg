@@ -4,6 +4,8 @@ import tea.stg2.machine.value.Addr;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class Heap {
@@ -24,5 +26,15 @@ public class Heap {
 
     public boolean has(Addr a) {
         return map.containsKey(a);
+    }
+
+    public void retainOnlyUsed(Set<Addr> used) {
+        assert map.keySet().containsAll(used);
+        var toClean = map.keySet().stream().filter(Predicate.not(used::contains)).collect(Collectors.toSet());
+        for (var addr: toClean) {
+            System.out.println("GC cleaning " + addr.toString());
+        }
+        map.keySet().retainAll(used);
+        assert map.keySet().equals(used);
     }
 }
