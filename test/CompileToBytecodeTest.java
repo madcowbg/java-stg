@@ -46,7 +46,7 @@ public class CompileToBytecodeTest {
     void compileToBytecode(String[] lines, String expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         var graph = new Parser(lines).graph();
 
-        var jasmSource = new Stg2Compiler(graph);
+        var jasmSource = new Stg2ToJASMCompiler(graph);
         var compiledClassess = Map.of(jasmSource.mainClassName(), CompileJASM.assemble("someapp", new ByteArrayInputStream(jasmSource.byteArray())));
 
         var cl = new MemoryClassLoader(compiledClassess);

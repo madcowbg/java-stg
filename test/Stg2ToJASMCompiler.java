@@ -3,15 +3,17 @@ import tea.stg2.parser.Bind;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-public class Stg2Compiler {
+public class Stg2ToJASMCompiler {
     private static final String MAIN_CLASS = "MainClassOfApp";
     private final StringBuilder source = new StringBuilder();
 
-    public Stg2Compiler(Bind[] graph) {
+    public Stg2ToJASMCompiler(Bind[] graph) {
         header();
 
         src("    .limit stack 2", "up to two items can be pushed");
         src("    .limit locals 2");
+
+        // TODO complete implementation
 
         footer();
     }
