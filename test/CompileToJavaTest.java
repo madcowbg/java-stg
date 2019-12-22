@@ -11,7 +11,6 @@ import tea.stg2.parser.ParsingFailed;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Map;
 
 import static parser.StringParserTest.lines;
 
@@ -29,7 +28,9 @@ public class CompileToJavaTest {
         var graph = new Parser(lines).graph();
         var javaSource = new Stg2ToJavaCompiler(graph);
 
-        var compiledClassess = Map.of(javaSource.mainClassName(), CompileJava.compile(javaSource.mainClassName(), new ByteArrayInputStream(javaSource.byteArray())));
+        System.out.println(new String(javaSource.byteArray()));
+
+        var compiledClassess = CompileJava.compile(javaSource.mainClassName(), new ByteArrayInputStream(javaSource.byteArray()));
         var cl = new MemoryClassLoader(compiledClassess);
 
         runMainOfMain(cl, javaSource.mainClassName());

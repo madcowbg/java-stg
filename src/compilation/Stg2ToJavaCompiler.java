@@ -10,15 +10,32 @@ public class Stg2ToJavaCompiler extends SourceBuilder {
 
         header();
 
+        src("   static enum CodeLabel {");
+        src("       START");
+        src("   }");
+
         declareRegisters();
 
         src("   public static void main(String[] var0) {");
-        src("       System.out.println(\"Hello World!\");");
-        src("       A = 5; ");
-        src("       B = 37; ");
-        src("       int var2 = A + B;");
-        src("       String var1 = String.valueOf(var2);");
-        src("       System.out.println(var1);");
+        src("       System.out.println(\"Initializing ...!\");");
+
+        src("       CodeLabel cont = CodeLabel.START;");
+        src("       mainLoop: while (true) {");
+        src("           switch (cont) {");
+        src("           case START: ");
+
+        src("               A = 5; ");
+        src("               B = 37; ");
+        src("               int var2 = A + B;");
+        src("               String var1 = String.valueOf(var2);");
+        src("               System.out.println(var1);");
+
+        src("               break mainLoop;");
+        src("               // break;");
+        src("           default: ");
+        src("               throw new RuntimeException(\"Unrecognized code label: \" + cont + \"!\");");
+        src("           }");
+        src("       }");
         src("   }");
         footer();
     }

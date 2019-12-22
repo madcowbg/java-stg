@@ -8,11 +8,14 @@ import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class CompileJava {
 
-    public static byte[] compile(String className, InputStream content) throws IOException {
+    public static Map<String, byte[]> compile(String className, InputStream content) throws IOException {
         JavaCompiler compiler =
                 ToolProvider.getSystemJavaCompiler();
         ClassFileManager manager = new ClassFileManager(
@@ -22,7 +25,10 @@ public class CompileJava {
         compiler.getTask(null, manager, null, null, null, files)
                 .call();
 
-        return manager.o.getBytes();
+        return manager.objects.get(javax.tools.JavaFileObject.Kind.CLASS)
+                .entrySet().stream().collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> e.getValue().getBytes()));
     }
 
     // These are some utility classes needed for the JavaCompiler
@@ -49,18 +55,19 @@ public class CompileJava {
 
     static final class ClassFileManager
             extends ForwardingJavaFileManager<StandardJavaFileManager> {
-        JavaFileObject o;
+        Map<JavaFileObject.Kind, Map<String, JavaFileObject>> objects = new HashMap<>();
+
         ClassFileManager(StandardJavaFileManager m) {
             super(m);
         }
+
         @Override
         public JavaFileObject getJavaFileForOutput(
                 JavaFileManager.Location location,
                 String className,
                 JavaFileObject.Kind kind,
-                FileObject sibling
-        ) {
-            return o = new JavaFileObject(className, kind);
+                FileObject sibling) {
+            return objects.computeIfAbsent(kind, a -> new HashMap<>()).computeIfAbsent(className, (b) -> new JavaFileObject(className, kind));
         }
     }
 
