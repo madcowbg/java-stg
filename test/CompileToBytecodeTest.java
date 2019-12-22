@@ -1,3 +1,6 @@
+import jas.jasError;
+import jasmin.CompileJASM;
+import jasmin.JASMParsingFailed;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -6,8 +9,10 @@ import tea.stg2.machine.ExecutionFailed;
 import tea.stg2.parser.Parser;
 import tea.stg2.parser.ParsingFailed;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -38,20 +43,9 @@ public class CompileToBytecodeTest {
 
     @Test
     void runReadyClassFile() throws IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        var className = "Main";
-        Map<String, byte[]> classes = readClassess(className);
+        Map<String, byte[]> classes = readClassess("Main");
 
-        // Create a new class loader with the directory
-        ClassLoader cl = new ClassLoader() {
-            @Override
-            protected Class<?> findClass(String name) throws ClassNotFoundException {
-                byte[] bytes = classes.get(name);
-                if (bytes == null) {
-                    throw new ClassNotFoundException(name);
-                }
-                return defineClass(name, bytes, 0, bytes.length);
-            }
-        };
+        ClassLoader cl = new MemoryClassLoader(classes);
 
         Class<?> cls = cl.loadClass("Main");
         var args = new Object[]{new String[]{}};
@@ -71,5 +65,46 @@ public class CompileToBytecodeTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Test
+    void compileAndRunClassFile() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        List<String> classNames = List.of("Main");
+        Map<String, byte[]> asmFiles = classNames.stream().collect(Collectors.toMap(
+                Function.identity(),
+                f -> readResource("classes/" + f + ".j")));
+
+        Map<String, byte[]> compiled = asmFiles.entrySet().stream().collect(Collectors.toMap(
+                Map.Entry::getKey,
+                e -> {
+                    try {
+                        return CompileJASM.assemble(e.getKey(), new ByteArrayInputStream(e.getValue()));
+                    } catch (Exception ex) {
+                        throw new RuntimeException(ex);
+                    }
+                }));
+
+        ClassLoader cl = new MemoryClassLoader(compiled);
+
+        Class<?> cls = cl.loadClass("Main");
+        var args = new Object[]{new String[]{}};
+        cls.getMethod("main", String[].class).invoke(null, args);
+    }
+}
+
+class MemoryClassLoader extends ClassLoader {
+    private final Map<String, byte[]> classes;
+
+    MemoryClassLoader(Map<String, byte[]> classes) {
+        this.classes = classes;
+    }
+
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException {
+        byte[] bytes = classes.get(name);
+        if (bytes == null) {
+            throw new ClassNotFoundException(name);
+        }
+        return defineClass(name, bytes, 0, bytes.length);
     }
 }
