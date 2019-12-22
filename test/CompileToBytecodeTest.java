@@ -1,6 +1,5 @@
-import jas.jasError;
 import jasmin.CompileJASM;
-import jasmin.JASMParsingFailed;
+import jasmin.MemoryClassLoader;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -42,14 +41,12 @@ public class CompileToBytecodeTest {
     }
 
     @Test
-    void runReadyClassFile() throws IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    void runReadyClassFile() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         Map<String, byte[]> classes = readClassess("Main");
 
         ClassLoader cl = new MemoryClassLoader(classes);
 
-        Class<?> cls = cl.loadClass("Main");
-        var args = new Object[]{new String[]{}};
-        cls.getMethod("main", String[].class).invoke(null, args);
+        runMainOfMain(cl);
     }
 
     private Map<String, byte[]> readClassess(String... className) {
@@ -86,25 +83,13 @@ public class CompileToBytecodeTest {
 
         ClassLoader cl = new MemoryClassLoader(compiled);
 
+        runMainOfMain(cl);
+    }
+
+    private void runMainOfMain(ClassLoader cl) throws ClassNotFoundException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
         Class<?> cls = cl.loadClass("Main");
         var args = new Object[]{new String[]{}};
         cls.getMethod("main", String[].class).invoke(null, args);
     }
 }
 
-class MemoryClassLoader extends ClassLoader {
-    private final Map<String, byte[]> classes;
-
-    MemoryClassLoader(Map<String, byte[]> classes) {
-        this.classes = classes;
-    }
-
-    @Override
-    protected Class<?> findClass(String name) throws ClassNotFoundException {
-        byte[] bytes = classes.get(name);
-        if (bytes == null) {
-            throw new ClassNotFoundException(name);
-        }
-        return defineClass(name, bytes, 0, bytes.length);
-    }
-}
