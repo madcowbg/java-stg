@@ -1,3 +1,4 @@
+import compilation.Stg2ToJASMCompiler;
 import jas.jasError;
 import jasmin.CompileJASM;
 import jasmin.JASMParsingFailed;

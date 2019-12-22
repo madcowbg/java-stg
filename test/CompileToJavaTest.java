@@ -1,4 +1,5 @@
 import compilation.CompileJava;
+import compilation.Stg2ToJavaCompiler;
 import jas.jasError;
 import jasmin.JASMParsingFailed;
 import jasmin.MemoryClassLoader;

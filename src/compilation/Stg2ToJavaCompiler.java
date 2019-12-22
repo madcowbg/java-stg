@@ -1,3 +1,5 @@
+package compilation;
+
 import tea.stg2.parser.Bind;
 
 public class Stg2ToJavaCompiler {
