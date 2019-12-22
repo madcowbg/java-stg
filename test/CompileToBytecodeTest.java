@@ -1,4 +1,6 @@
+import jas.jasError;
 import jasmin.CompileJASM;
+import jasmin.JASMParsingFailed;
 import jasmin.MemoryClassLoader;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -29,7 +31,7 @@ public class CompileToBytecodeTest {
     }
 
     @Test(dataProvider = "compileCases")
-    void runAbstractMachine(String[] lines, String expectedResult) throws ParsingFailed, ExecutionFailed {
+    void runAbstractMachine(String[] lines, String expectedResult) throws ParsingFailed, ExecutionFailed, JASMParsingFailed, jasError, IOException {
         var graph = new Parser(lines).graph();
         var machine = new AbstractMachine(graph);
 
@@ -40,13 +42,25 @@ public class CompileToBytecodeTest {
         Assert.assertEquals(result.toString(), expectedResult);
     }
 
+    @Test(dataProvider = "compileCases")
+    void compileToBytecode(String[] lines, String expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+        var graph = new Parser(lines).graph();
+
+        var jasmSource = new Stg2Compiler(graph);
+        var compiledClassess = Map.of(jasmSource.mainClassName(), CompileJASM.assemble("someapp", new ByteArrayInputStream(jasmSource.byteArray())));
+
+        var cl = new MemoryClassLoader(compiledClassess);
+        runMainOfMain(cl, jasmSource.mainClassName());
+    }
+
+
     @Test
     void runReadyClassFile() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         Map<String, byte[]> classes = readClassess("Main");
 
         ClassLoader cl = new MemoryClassLoader(classes);
 
-        runMainOfMain(cl);
+        runMainOfMain(cl, "Main");
     }
 
     private Map<String, byte[]> readClassess(String... className) {
@@ -83,11 +97,11 @@ public class CompileToBytecodeTest {
 
         ClassLoader cl = new MemoryClassLoader(compiled);
 
-        runMainOfMain(cl);
+        runMainOfMain(cl, "Main");
     }
 
-    private void runMainOfMain(ClassLoader cl) throws ClassNotFoundException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
-        Class<?> cls = cl.loadClass("Main");
+    private void runMainOfMain(ClassLoader cl, String mainClassName) throws ClassNotFoundException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+        Class<?> cls = cl.loadClass(mainClassName);
         var args = new Object[]{new String[]{}};
         cls.getMethod("main", String[].class).invoke(null, args);
     }
