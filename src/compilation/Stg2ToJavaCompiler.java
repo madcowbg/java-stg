@@ -21,7 +21,7 @@ public class Stg2ToJavaCompiler extends SourceBuilder {
 
     private String[] mainClassBody() {
         return block(
-                c("static class ClosureData "), block(
+                c("static class ClosureData"), block(
                         d("public InfoTable infoPointer"),
                         d("public Object[] pointerWords"),      // FIXME typize?
                         d("public Object[] nonPointerWords")),  // FIXME typize?
@@ -36,7 +36,10 @@ public class Stg2ToJavaCompiler extends SourceBuilder {
                         d("CodeLabel jumpTo()")
                 ),
 
-                registerDeclaration(),
+                d("private static int Node", "Holds the address of the currently evaluating closure"),
+                d("private static int Sp"),
+                d("private static int SpA"),
+                d("private static int SpB"),
 
                 f("public static void main(String[] var0)"), tinyInterpreterBody());
     }
@@ -46,11 +49,6 @@ public class Stg2ToJavaCompiler extends SourceBuilder {
                 debug(e("System.out.println(\"Starting execution ...!\");")),
 
                 e("CodeLabel cont = () -> {"),
-                e("    A = 5; "),
-                e("    B = 37; "),
-                e("    int var2 = A + B;"),
-                e("    String var1 = String.valueOf(var2);"),
-                e("    System.out.println(var1);"),
                 e("    return null;"),
                 e("};"),
 
@@ -73,7 +71,7 @@ public class Stg2ToJavaCompiler extends SourceBuilder {
     }
 
     private String[] c(String classDef) {
-        return new String[]{classDef};
+        return new String[]{classDef + " "};
     }
 
     private void write(String[]... strs) {
@@ -96,14 +94,6 @@ public class Stg2ToJavaCompiler extends SourceBuilder {
 
     String[] list(String[]... strs) {
         return Stream.concat(Arrays.stream(strs).flatMap(Arrays::stream), Stream.of("\n")).toArray(String[]::new);
-    }
-
-    private String[] registerDeclaration() {
-        return list(
-                d("private static int Node", "Holds the address of the currently evaluating closure"),
-                d("private static int Sp"),
-                d("private static int A"),
-                d("private static int B"));
     }
 
     public String mainClassName() {
