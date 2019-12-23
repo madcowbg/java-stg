@@ -2,11 +2,14 @@ package compilation;
 
 import tea.stg2.parser.Bind;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 public class Stg2ToJASMCompiler extends SourceBuilder {
     private static final String MAIN_CLASS = "MainClassOfApp";
+    private final String commentSeparator = " ; ";
 
     public Stg2ToJASMCompiler(Bind[] graph) {
-        super(" ; ");
         header();
 
         src("    .limit stack 2", "up to two items can be pushed");
@@ -45,5 +48,20 @@ public class Stg2ToJASMCompiler extends SourceBuilder {
 
     public String mainClassName() {
         return MAIN_CLASS;
+    }
+
+    protected void comment(String... cs) {
+        for(var c: cs) {
+            src(commentSeparator + c);
+        }
+    }
+
+    protected void src(String l, String... comment) {
+        assert !l.contains("\n");
+        source.append(l);
+        if (comment.length > 0) {
+            source.append(Arrays.stream(comment).collect(Collectors.joining(commentSeparator, "\t" + commentSeparator, "")));
+        }
+        source.append("\n");
     }
 }
