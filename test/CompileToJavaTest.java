@@ -3,8 +3,11 @@ import compilation.Stg2ToJavaCompiler;
 import jas.jasError;
 import jasmin.JASMParsingFailed;
 import jasmin.MemoryClassLoader;
+import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tea.stg2.machine.AbstractMachine;
+import tea.stg2.machine.ExecutionFailed;
 import tea.stg2.parser.Parser;
 import tea.stg2.parser.ParsingFailed;
 
@@ -19,27 +22,33 @@ public class CompileToJavaTest {
     @DataProvider
     public static Object[][] compileCases() throws IOException {
         return new Object[][]{
-                {lines("stg2ToJSM/first.stg"), "ReturnInt 42#"},
+                {lines("stg2ToJSM/first.stg"), Integer.valueOf(42)},
         };
     }
 
     @Test(dataProvider = "compileCases")
-    void compileToJava(String[] lines, String expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    void compileToJava(String[] lines, Object expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, ExecutionFailed, InstantiationException {
         var graph = new Parser(lines).graph();
-        var javaSource = new Stg2ToJavaCompiler(graph);
 
-        System.out.println(new String(javaSource.byteArray()));
+//        /* FIXME REMOVE! */
+//        var machine = new AbstractMachine(graph);
+//        machine.run();
 
-        var compiledClassess = CompileJava.compile(javaSource.mainClassName(), new ByteArrayInputStream(javaSource.byteArray()));
+        var compiler = new Stg2ToJavaCompiler(graph);
+        var javaSource = compiler.compile();
+
+        System.out.println(javaSource);
+
+        var compiledClassess = CompileJava.compile(compiler.mainClassName(), new ByteArrayInputStream(javaSource.getBytes()));
         var cl = new MemoryClassLoader(compiledClassess);
 
-        runMainOfMain(cl, javaSource.mainClassName());
+
+        Class<?> cls = ((ClassLoader) cl).loadClass(compiler.mainClassName());
+        var app = cls.getConstructor().newInstance();
+        var result = cls.getMethod("eval").invoke(app);
+
+        Assert.assertEquals(expectedResult, result);
     }
 
-    private void runMainOfMain(ClassLoader cl, String mainClassName) throws ClassNotFoundException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
-        Class<?> cls = cl.loadClass(mainClassName);
-        var args = new Object[]{new String[]{}};
-        cls.getMethod("main", String[].class).invoke(null, args);
-    }
 }
 
