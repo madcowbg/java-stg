@@ -2,25 +2,32 @@ package compilation;
 
 import tea.core.CompileFailed;
 import tea.stg2.parser.Bind;
+import tea.stg2.parser.LambdaForm;
+import tea.stg2.parser.expr.Application;
 import tea.stg2.parser.expr.Literal;
 
-import java.util.Arrays;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Stg2ToJavaCompiler {
+    public static final String ENTRY_POINT = "main";
     private static final String MAIN_CLASS_NAME = "MainAppClass";
     public static final String OFFSET = "    ";
 
     private boolean debuggingEnabled = true;
 
-    private final Bind[] graph;
-    private final Bind main;
+    private final Map<String, Bind> graph;
+    private final Map<String, String> globalNames;
+
+    private final HashMap<LambdaForm, String> lfNames = new HashMap<>();
+    private int lfIter = 0;
 
     public Stg2ToJavaCompiler(Bind[] graph) {
-        this.graph = graph;
-        this.main = Arrays.stream(graph).filter(g -> g.var.name.equals("main")).findFirst().orElseThrow();
+        this.graph = Arrays.stream(graph).collect(Collectors.toMap(b -> b.var.name, Function.identity()));
+        this.globalNames = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "GLOBAL_" + n));
     }
 
     private String[] mainClassBody() {
@@ -37,7 +44,8 @@ public class Stg2ToJavaCompiler {
                 ),
 
                 c("class Global"), block(
-                        d("public Closure MAIN = createMainClosure();")
+                        d("public Closure MAIN = initGlobalMainClosure();"),
+                        flatten(globalNonMainBinds().map(this::globalClosureDeclaration))
                 ),
 
                 d("private Global global = new Global();"),
@@ -55,46 +63,136 @@ public class Stg2ToJavaCompiler {
                 ),
 
                 m("public CodeLabel EVAL_MAIN()"), block(
+                        e("B[++SpB] = this::MAIN_RETURN_INT;"),
                         e("Node = global.MAIN;"),
                         e("return ENTER(Node);")
                 ),
+
+                flatten(globalNonMainBinds().map(this::globalBindsFunctions)),
 
                 e("", "JUMP is implemented via returning of code labels"),
                 m("private static CodeLabel ENTER(Closure c)"), block(
                         e("return c.infoPointer.standardEntryCode;")
                 ),
 
-                d("private CodeLabel[] A = new CodeLabel[1000]; "), // FIXME implement dynamic allocation and GC
+                d("private Object[] A = new Object[1000]; "), // FIXME implement dynamic allocation and GC
                 d("private CodeLabel[] B = new CodeLabel[1000];"), // FIXME implement dynamic allocation
 
                 d("private Closure Node", "Holds the address of the currently evaluating closure"),
-                d("private int Sp"),
-                d("private int SpA = 0", "front to back indexing"),
-                d("private int SpB = B.length-1", "back to front indexing"),
+                d("private int SpA = A.length", "grows backwards"),
+                d("private int SpB = -1", "grows forwards"),
 
                 d("private int ReturnInt", "register to return primitive ints"),
                 d("private Object result;", "where we put the final result!"),
 
                 m("public Object eval()"), mainBody(),
 
-                m("public Closure createMainClosure()"), block(
+                m("public Closure initGlobalMainClosure()"), block(
                         e("Closure res = new Closure();"),
                         e("res.infoPointer.standardEntryCode = this::MAIN_ENTRY;"),
                         e("return res;")
+                ),
+                m("private void dumpState()"), block(
+                        e(dump("SpA = \" + SpA + \"")),
+                        e(dump("A = ...\" + Arrays.toString(IntStream.range(SpA-10, A.length).mapToObj(i -> A[i]).toArray(Object[]::new)) + \"")),
+                        e(dump("SpB = \" + SpB + \"")),
+                        e(dump("B = \" + Arrays.toString(IntStream.range(0, SpB + 10).mapToObj(i -> B[i]).toArray(Object[]::new)) + \"")),
+                        e(dump("Node = \" + Node + \""))
                 ));
     }
 
-    private String[] compileMain() {
-        ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
+    private String[] globalBindsFunctions(Bind bind) {
+        return list(
+                m("public Closure " + globalClosureInitName(bind) + "()"), block(
+                        e("Closure res = new Closure();"),
+                        e("res.infoPointer.standardEntryCode = this::" + entry(bind.lf) + ";"),
+                        e("return res;")
+                ),
 
-        String[] source;
-        if (main.lf.expr instanceof Literal) {
-            source = list(
-                    e("ReturnInt = " + ((Literal) main.lf.expr).value + ";", "value to be returned"),
-                    e("return this::MAIN_RETURN_INT;"));
+                m("public CodeLabel " + entry(bind.lf) + "()"), block(
+                        lambdaFormBlock(bind.lf)
+                )
+        );
+    }
+
+    private String[] lambdaFormBlock(LambdaForm lf) {
+        List<String> source = new ArrayList<>();
+
+        // fixme use common buildBlock method
+        var variableIdxs = IntStream.range(0, lf.boundVars.length).boxed()
+                .collect(Collectors.toMap(i -> lf.boundVars[i], i -> (lf.boundVars.length - i)));
+
+        // TODO argument satisfaction check
+        // TODO stack overflow check
+        // TODO heap overflow check
+        // pop bound vars
+        source.addAll(List.of(list(
+                variableIdxs.entrySet().stream()
+                        .map(e -> e("Object " + e.getKey().name + " = A[SpA - " + e.getValue() + "];"))
+                        .flatMap(Arrays::stream).toArray(String[]::new),
+                e(" SpA = SpA + " + (variableIdxs.size()) + ";", "adjust popped stack all!")
+        )));
+
+        if (lf.expr instanceof Literal) {
+            source.addAll(List.of(list(
+                    e("ReturnInt = " + ((Literal) lf.expr).value + ";", "value to be returned"),
+                    e("return B[SpB--];"))));
+        } else if (lf.expr instanceof Application) {
+            var call = ((Application)lf.expr);
+
+            for (int i = 0; i < call.args.length; i++) {
+                if (call.args[i] instanceof Literal) {
+                    var lit = (Literal)call.args[i];
+                    source.addAll(List.of(
+                            e("A[--SpA] = " + lit.value + ";", "add arguments")));
+                } else {
+                    throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
+                }
+            }
+
+            if (globalNames.get(call.f.name) == null) {
+                throw new CompileFailed("FIXME not implemented!!!");
+            }
+            // call to non-built-in function
+            source.addAll(List.of(list(
+                    e("Node = global." + globalNames.get(call.f.name) + ";", "enter global closure"),
+                    e("return ENTER(Node);")
+            )));
+
         } else {
             throw new CompileFailed("FIXME not implemented!!!");
         }
+
+        return source.toArray(String[]::new);
+    }
+
+    private String entry(LambdaForm lf) {
+        return lfNames.computeIfAbsent(lf, l -> "LF_" + (lfIter++));
+    }
+
+    private String[] flatten(Stream<String[]> vals) {
+        return  vals.flatMap(Arrays::stream).toArray(String[]::new);
+    }
+
+    private Stream<Bind> globalNonMainBinds() {
+        return graph.values().stream()
+                .filter(b -> !b.var.name.equals(ENTRY_POINT));
+    }
+
+    private String[] globalClosureDeclaration(Bind bind) {
+        return d("public Closure " + globalNames.get(bind.var.name) + " = " + globalClosureInitName(bind) + "();");
+    }
+
+    private String globalClosureInitName(Bind bind) {
+        return "init" + globalNames.get(bind.var.name) + "Closure";
+    }
+
+    private String[] compileMain() {
+        Bind main = graph.get("main");
+
+        ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
+
+        var source = lambdaFormBlock(main.lf);
 
         return block(
                 debug(e(dump("MAIN standard entry."))),
@@ -108,24 +206,33 @@ public class Stg2ToJavaCompiler {
     }
 
     static private String dump(String message) {
-        return "System.out.println(\"" + message + "\");";
+        return "System.err.println(\"" + message + "\");";
     }
 
     private String[] mainBody() {
         return block(
-                debug(e("System.out.println(\"Starting execution ...!\");")),
+                debug(e(dump("Starting execution ...!"))),
 
                 e("CodeLabel cont = this::EVAL_MAIN;"),
 
-                tinyInterpreterBody(),
-
-                debug(e("System.out.println(\"Execution ended!\");")),
+                e("try"), block(
+                        tinyInterpreterBody()
+                ), e("catch (RuntimeException e) "), block(
+                        debug(e(dump("========== Exception raised!"))),
+                        e("dumpState();"),
+                        e("e.printStackTrace();"),
+                        e("throw new RuntimeException(e);")
+                ),
+                debug(e(dump("Execution ended!"))),
                 e("return result;"));
     }
 
-    static private String[] tinyInterpreterBody() {
+    private String[] tinyInterpreterBody() {
         return list(
                 e("while (cont != null) {"),
+                debug(e(dump("========== Dumping state before jump... ============"))),
+                debug(e("dumpState();")),
+                debug(e(dump("============ Jumping to: \" + cont.toString() + \""))),
                 e("    cont = cont.jumpTo();"),
                 e("}"));
     }
@@ -166,11 +273,23 @@ public class Stg2ToJavaCompiler {
         return MAIN_CLASS_NAME;
     }
 
+    private String[] toLines() {
+        return list(
+                e("import java.util.*;"),
+                e("import java.util.stream.IntStream;"),
+                c("public class " + MAIN_CLASS_NAME), mainClassBody()
+        );
+    }
+
     public String compile() {
-        var lines = list(c("public class " + MAIN_CLASS_NAME), mainClassBody());
+        var lines = toLines();
         return Arrays.stream(lines).collect(Collectors.joining("\n", "", ""));
     }
 
+    public String withLNs() {
+        var lines = compile().split("\n");
+        return IntStream.range(0, lines.length).mapToObj(i -> String.format("%03d\t%s", i+1, lines[i])).collect(Collectors.joining("\n", "", ""));
+    }
 }
 
 class CompilationFailed extends RuntimeException {

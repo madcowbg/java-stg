@@ -95,7 +95,7 @@ public class AbstractMachine {
                 debug("(5)  Eval (c xs) rho");
                 var cons = (Cons<Atom>)eAsEval().e;
                 e = new ReturnCon(new Data(cons.cons), vals(eAsEval().localEnv, globalEnv, cons.args));
-            } else if (e instanceof ReturnCon && !returnStack.isEmpty()) {
+            } else if (e instanceof ReturnCon && returnStack.size() > 0) {
                 var c = ((ReturnCon) e).cons;
                 var ws = ((ReturnCon) e).vals;
 

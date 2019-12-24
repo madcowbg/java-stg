@@ -23,6 +23,7 @@ public class CompileToJavaTest {
     public static Object[][] compileCases() throws IOException {
         return new Object[][]{
                 {lines("stg2ToJSM/first.stg"), Integer.valueOf(42)},
+                {lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
         };
     }
 
@@ -30,14 +31,14 @@ public class CompileToJavaTest {
     void compileToJava(String[] lines, Object expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, ExecutionFailed, InstantiationException {
         var graph = new Parser(lines).graph();
 
-//        /* FIXME REMOVE! */
-//        var machine = new AbstractMachine(graph);
-//        machine.run();
+        /* FIXME REMOVE! */
+        var machine = new AbstractMachine(graph);
+        machine.run();
 
         var compiler = new Stg2ToJavaCompiler(graph);
         var javaSource = compiler.compile();
 
-        System.out.println(javaSource);
+        System.out.println(compiler.withLNs());
 
         var compiledClassess = CompileJava.compile(compiler.mainClassName(), new ByteArrayInputStream(javaSource.getBytes()));
         var cl = new MemoryClassLoader(compiledClassess);
