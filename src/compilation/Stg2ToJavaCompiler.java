@@ -19,13 +19,16 @@ public class Stg2ToJavaCompiler {
 
     private boolean debuggingEnabled = true;
 
+    private final String description;
+
     private final Map<String, Bind> graph;
     private final Map<String, String> globalNames;
 
     private final HashMap<LambdaForm, String> lfNames = new HashMap<>();
     private int lfIter = 0;
 
-    public Stg2ToJavaCompiler(Bind[] graph) {
+    public Stg2ToJavaCompiler(Bind[] graph, String description) {
+        this.description = description;
         this.graph = Arrays.stream(graph).collect(Collectors.toMap(b -> b.var.name, Function.identity()));
         this.globalNames = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "GLOBAL_" + n));
     }
@@ -105,17 +108,17 @@ public class Stg2ToJavaCompiler {
         return list(
                 m("public Closure " + globalClosureInitName(bind) + "()"), block(
                         e("Closure res = new Closure();"),
-                        e("res.infoPointer.standardEntryCode = this::" + entry(bind.lf) + ";"),
+                        e("res.infoPointer.standardEntryCode = this::" + lfEntry(bind.lf) + ";"),
                         e("return res;")
                 ),
 
-                m("public CodeLabel " + entry(bind.lf) + "()"), block(
-                        lambdaFormBlock(bind.lf)
+                m("public CodeLabel " + lfEntry(bind.lf) + "()"), block(
+                        lambdaFormEntryBlock(bind.lf)
                 )
         );
     }
 
-    private String[] lambdaFormBlock(LambdaForm lf) {
+    private String[] lambdaFormEntryBlock(LambdaForm lf) {
         List<String> source = new ArrayList<>();
 
         // fixme use common buildBlock method
@@ -130,7 +133,7 @@ public class Stg2ToJavaCompiler {
                 variableIdxs.entrySet().stream()
                         .map(e -> e("Object " + e.getKey().name + " = A[SpA - " + e.getValue() + "];"))
                         .flatMap(Arrays::stream).toArray(String[]::new),
-                e(" SpA = SpA + " + (variableIdxs.size()) + ";", "adjust popped stack all!")
+                e("SpA = SpA + " + (variableIdxs.size()) + ";", "adjust popped stack all!")
         )));
 
         if (lf.expr instanceof Literal) {
@@ -166,8 +169,8 @@ public class Stg2ToJavaCompiler {
         return source.toArray(String[]::new);
     }
 
-    private String entry(LambdaForm lf) {
-        return lfNames.computeIfAbsent(lf, l -> "LF_" + (lfIter++));
+    private String lfEntry(LambdaForm lf) {
+        return lfNames.computeIfAbsent(lf, l -> "LF_" + (lfIter++) + "_ENTRY");
     }
 
     private String[] flatten(Stream<String[]> vals) {
@@ -192,10 +195,10 @@ public class Stg2ToJavaCompiler {
 
         ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
 
-        var source = lambdaFormBlock(main.lf);
+        var source = lambdaFormEntryBlock(main.lf);
 
         return block(
-                debug(e(dump("MAIN standard entry."))),
+                debug(e(dump("MAIN standard lfEntry."))),
                 source);
     }
 
@@ -266,7 +269,7 @@ public class Stg2ToJavaCompiler {
 
 
     static String[] list(String[]... strs) {
-        return Stream.concat(Arrays.stream(strs).flatMap(Arrays::stream), Stream.of("\n")).toArray(String[]::new);
+        return Arrays.stream(strs).flatMap(Arrays::stream).toArray(String[]::new);
     }
 
     public String mainClassName() {
@@ -277,8 +280,13 @@ public class Stg2ToJavaCompiler {
         return list(
                 e("import java.util.*;"),
                 e("import java.util.stream.IntStream;"),
+                comment(description),
                 c("public class " + MAIN_CLASS_NAME), mainClassBody()
         );
+    }
+
+    private String[] comment(String description) {
+        return new String[]{"/*", description, "*/"};
     }
 
     public String compile() {

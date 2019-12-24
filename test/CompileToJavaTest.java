@@ -11,8 +11,7 @@ import tea.stg2.machine.ExecutionFailed;
 import tea.stg2.parser.Parser;
 import tea.stg2.parser.ParsingFailed;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 
 import static parser.StringParserTest.lines;
@@ -22,21 +21,27 @@ public class CompileToJavaTest {
     @DataProvider
     public static Object[][] compileCases() throws IOException {
         return new Object[][]{
-                {lines("stg2ToJSM/first.stg"), Integer.valueOf(42)},
-                {lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
+                {"first",  lines("stg2ToJSM/first.stg"), Integer.valueOf(42)},
+                {"simple_app",lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
         };
     }
 
     @Test(dataProvider = "compileCases")
-    void compileToJava(String[] lines, Object expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, ExecutionFailed, InstantiationException {
+    void compileToJava(String name, String[] lines, Object expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, ExecutionFailed, InstantiationException {
         var graph = new Parser(lines).graph();
 
         /* FIXME REMOVE! */
         var machine = new AbstractMachine(graph);
         machine.run();
 
-        var compiler = new Stg2ToJavaCompiler(graph);
+        var compiler = new Stg2ToJavaCompiler(graph, String.join("\n", lines));
         var javaSource = compiler.compile();
+
+        /* FIXME REMOVE! */
+        try(var w = new PrintWriter(new FileOutputStream(new File("generated_" + name + ".java")))) {
+            w.println(javaSource);
+            w.flush();
+        };
 
         System.out.println(compiler.withLNs());
 
