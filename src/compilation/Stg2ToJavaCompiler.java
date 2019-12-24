@@ -78,13 +78,16 @@ public class Stg2ToJavaCompiler {
                         e("return c.infoPointer.standardEntryCode;")
                 ),
 
+                comment("Stacks"),
                 d("private Object[] A = new Object[1000]; "), // FIXME implement dynamic allocation and GC
                 d("private CodeLabel[] B = new CodeLabel[1000];"), // FIXME implement dynamic allocation
 
+                comment("Registers"),
                 d("private Closure Node", "Holds the address of the currently evaluating closure"),
                 d("private int SpA = A.length", "grows backwards"),
                 d("private int SpB = -1", "grows forwards"),
 
+                comment("Return Registers"),
                 d("private int ReturnInt", "register to return primitive ints"),
                 d("private Object result;", "where we put the final result!"),
 
@@ -112,7 +115,7 @@ public class Stg2ToJavaCompiler {
                         e("return res;")
                 ),
 
-                m("public CodeLabel " + lfEntry(bind.lf) + "()"), block(
+                m("public CodeLabel " + lfEntry(bind.lf) + "()", "ENTRY OF:", bind.lf.toString()), block(
                         lambdaFormEntryBlock(bind.lf)
                 )
         );
@@ -123,7 +126,9 @@ public class Stg2ToJavaCompiler {
 
         // fixme use common buildBlock method
         var variableIdxs = IntStream.range(0, lf.boundVars.length).boxed()
-                .collect(Collectors.toMap(i -> lf.boundVars[i], i -> (lf.boundVars.length - i)));
+                .collect(Collectors.toMap(i -> lf.boundVars[i], Function.identity()));
+        var variableNames = Arrays.stream(lf.boundVars).collect(
+                Collectors.toMap(Function.identity(), name -> "LOCAL_" + name));
 
         // TODO argument satisfaction check
         // TODO stack overflow check
@@ -131,7 +136,7 @@ public class Stg2ToJavaCompiler {
         // pop bound vars
         source.addAll(List.of(list(
                 variableIdxs.entrySet().stream()
-                        .map(e -> e("Object " + e.getKey().name + " = A[SpA - " + e.getValue() + "];"))
+                        .map(e -> e("Object " + variableNames.get(e.getKey()) + " = A[SpA + " + e.getValue() + "];"))
                         .flatMap(Arrays::stream).toArray(String[]::new),
                 e("SpA = SpA + " + (variableIdxs.size()) + ";", "adjust popped stack all!")
         )));
@@ -244,8 +249,14 @@ public class Stg2ToJavaCompiler {
         return debuggingEnabled ? s : new String[0];
     }
 
-    static private String[] m(String s) {
-        return new String[]{s};
+    static private String[] m(String s, String... comments) {
+        return comments.length == 0 ?
+                new String[]{s} :
+                Stream.of(
+                        Stream.of("/*"),
+                        Arrays.stream(comments),
+                        Stream.of("*/"),
+                        Stream.of(s)).flatMap(Function.identity()).toArray(String[]::new);
     }
 
     static private String[] e(String s, String... comment) {
@@ -285,8 +296,8 @@ public class Stg2ToJavaCompiler {
         );
     }
 
-    private String[] comment(String description) {
-        return new String[]{"/*", description, "*/"};
+    private static String[] comment(String text) {
+        return new String[]{"/*", text, "*/"};
     }
 
     public String compile() {
