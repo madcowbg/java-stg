@@ -23,6 +23,7 @@ public class CompileToJavaTest {
         return new Object[][]{
                 {"first",  lines("stg2ToJSM/first.stg"), Integer.valueOf(42)},
                 {"simple_app",lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
+                {"simple_program_let",lines("stg2ToJSM/simple_program_let.stg"), Integer.valueOf(42)},
         };
     }
 
