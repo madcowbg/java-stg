@@ -47,7 +47,7 @@ public class Stg2ToJavaCompiler {
                 ),
 
                 c("class Global"), block(
-                        d("public Closure MAIN = initGlobalMainClosure();"),
+                        d("public Closure MAIN = initGlobalMainClosure()"),
                         flatten(globalNonMainBinds().map(this::globalClosureDeclaration))
                 ),
 
@@ -89,7 +89,7 @@ public class Stg2ToJavaCompiler {
 
                 comment("Return Registers"),
                 d("private int ReturnInt", "register to return primitive ints"),
-                d("private Object result;", "where we put the final result!"),
+                d("private Object result", "where we put the final result!"),
 
                 m("public Object eval()"), mainBody(),
 
@@ -251,27 +251,27 @@ public class Stg2ToJavaCompiler {
 
     static private String[] m(String s, String... comments) {
         return comments.length == 0 ?
-                new String[]{s} :
+                new String[]{"", s} :
                 Stream.of(
-                        Stream.of("/*"),
+                        Stream.of("", "/* "),
                         Arrays.stream(comments),
-                        Stream.of("*/"),
+                        Stream.of(" */"),
                         Stream.of(s)).flatMap(Function.identity()).toArray(String[]::new);
     }
 
     static private String[] e(String s, String... comment) {
-        return new String[]{s + (comment.length == 0 ? "" : Arrays.stream(comment).collect(Collectors.joining(" ", "/*", "*/")))};
+        return new String[]{s + (comment.length == 0 ? "" : Arrays.stream(comment).collect(Collectors.joining(" ", "/* ", " */")))};
     }
 
     static private String[] c(String classDef) {
-        return new String[]{classDef + " "};
+        return new String[]{"", classDef + " "};
     }
 
     static String[] block(String[]... elems) {
         return Stream.of(
                 Stream.of("{"),
                 Arrays.stream(elems).flatMap(Arrays::stream).map(s -> OFFSET + s),
-                Stream.of("}\n")).flatMap(Function.identity()).toArray(String[]::new);
+                Stream.of("}")).flatMap(Function.identity()).toArray(String[]::new);
     }
 
     static private String[] d(String v, String... comment) {
@@ -297,7 +297,7 @@ public class Stg2ToJavaCompiler {
     }
 
     private static String[] comment(String text) {
-        return new String[]{"/*", text, "*/"};
+        return new String[]{"/* ", text, " */"};
     }
 
     public String compile() {
