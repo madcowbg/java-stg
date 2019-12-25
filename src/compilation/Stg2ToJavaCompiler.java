@@ -30,34 +30,38 @@ public class Stg2ToJavaCompiler {
     public Stg2ToJavaCompiler(Bind[] graph, String description) {
         this.description = description;
         this.graph = Arrays.stream(graph).collect(Collectors.toMap(b -> b.var.name, Function.identity()));
-        this.globalNames = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "GLOBAL_" + n));
+        this.globalNames = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "$" + n + "$"));
     }
 
     private String[] mainClassBody() {
         return block(
                 c("class Closure"), block(
-                        d("public InfoTable infoPointer = new InfoTable()"),
+                        d("public final InfoTable infoPointer"),
                         d("public Object[] pointerWords"),      // FIXME typize?
-                        d("public Object[] nonPointerWords")),  // FIXME typize?
+                        d("public Object[] nonPointerWords"),  // FIXME typize?
+                        m("Closure(InfoTable infoPointer)"), block(e("this.infoPointer = infoPointer;"))
+                ),
 
                 c("class InfoTable"), block(
-                        d("public CodeLabel standardEntryCode"),
+                        d("public final CodeLabel standardEntryCode"),
                         d("public CodeLabel evacuationCode"),
-                        d("public CodeLabel scavengeCode")
-                ),
+                        d("public CodeLabel scavengeCode"),
+                        m("InfoTable(CodeLabel standardEntryCode)"), block(e("this.standardEntryCode = standardEntryCode;"))),
 
-                c("class Global"), block(
-                        d("public Closure MAIN = initGlobalMainClosure()"),
-                        flatten(globalNonMainBinds().map(this::globalClosureDeclaration))
-                ),
+                comment("Global infos and closures"),
+                d("public InfoTable MAIN_info = new InfoTable(this::MAIN_entry)"),
+                flatten(globalNonMainBinds().map(bind ->
+                d("public InfoTable " + globalNames.get(bind.var.name) + "_info = new InfoTable(this::"+ lfEntryCode(bind.lf) + ")"))),
 
-                d("private Global global = new Global();"),
+                d("public Closure MAIN_closure = new Closure(MAIN_info)"),
+                flatten(globalNonMainBinds().map(bind ->
+                d("public Closure " + globalNames.get(bind.var.name) + "_closure = new Closure(" + globalNames.get(bind.var.name) + "_info)"))),
 
-                c("interface CodeLabel"), block(
+                c("interface CodeLabel", "Represents pieces of code"), block(
                         d("CodeLabel jumpTo()")
                 ),
 
-                m("public CodeLabel MAIN_ENTRY()"), compileMain(),
+                m("public CodeLabel MAIN_entry()"), compileMain(),
 
                 m("public CodeLabel MAIN_RETURN_INT()"), block(
                         debug(e(dump("MAIN RETURN integer: \" + ReturnInt +\""))),
@@ -67,7 +71,7 @@ public class Stg2ToJavaCompiler {
 
                 m("public CodeLabel EVAL_MAIN()"), block(
                         e("B[++SpB] = this::MAIN_RETURN_INT;"),
-                        e("Node = global.MAIN;"),
+                        e("Node = MAIN_closure;"),
                         e("return ENTER(Node);")
                 ),
 
@@ -93,14 +97,8 @@ public class Stg2ToJavaCompiler {
 
                 m("public Object eval()"), mainBody(),
 
-                m("public Closure initGlobalMainClosure()"), block(
-                        e("Closure res = new Closure();"),
-                        e("res.infoPointer.standardEntryCode = this::MAIN_ENTRY;"),
-                        e("return res;")
-                ),
                 m("private void dumpState()"), block(
-                        e(dump("SpA = \" + SpA + \"")),
-                        e(dump("A = ...\" + Arrays.toString(IntStream.range(SpA-10, A.length).mapToObj(i -> A[i]).toArray(Object[]::new)) + \"")),
+                        dumpA(),
                         e(dump("SpB = \" + SpB + \"")),
                         e(dump("B = \" + Arrays.toString(IntStream.range(0, SpB + 10).mapToObj(i -> B[i]).toArray(Object[]::new)) + \"")),
                         e(dump("Node = \" + Node + \""))
@@ -109,13 +107,7 @@ public class Stg2ToJavaCompiler {
 
     private String[] globalBindsFunctions(Bind bind) {
         return list(
-                m("public Closure " + globalClosureInitName(bind) + "()"), block(
-                        e("Closure res = new Closure();"),
-                        e("res.infoPointer.standardEntryCode = this::" + lfEntry(bind.lf) + ";"),
-                        e("return res;")
-                ),
-
-                m("public CodeLabel " + lfEntry(bind.lf) + "()", "ENTRY OF:", bind.lf.toString()), block(
+                m("public CodeLabel " + lfEntryCode(bind.lf) + "()", "ENTRY OF:", bind.lf.toString()), block(
                         lambdaFormEntryBlock(bind.lf)
                 )
         );
@@ -134,11 +126,12 @@ public class Stg2ToJavaCompiler {
         // TODO stack overflow check
         // TODO heap overflow check
         // pop bound vars
+        int nvars = variableIdxs.size();
         source.addAll(List.of(list(
                 variableIdxs.entrySet().stream()
-                        .map(e -> e("Object " + variableNames.get(e.getKey()) + " = A[SpA + " + e.getValue() + "];"))
+                        .map(e -> e("Object " + variableNames.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
                         .flatMap(Arrays::stream).toArray(String[]::new),
-                e("SpA = SpA + " + (variableIdxs.size()) + ";", "adjust popped stack all!")
+                e(popA(nvars), "adjust popped stack all!")
         )));
 
         if (lf.expr instanceof Literal) {
@@ -152,18 +145,19 @@ public class Stg2ToJavaCompiler {
                 if (call.args[i] instanceof Literal) {
                     var lit = (Literal)call.args[i];
                     source.addAll(List.of(
-                            e("A[--SpA] = " + lit.value + ";", "add arguments")));
+                            e(pushA(String.valueOf(lit.value)), "add arguments")));
                 } else {
                     throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
                 }
             }
 
             if (globalNames.get(call.f.name) == null) {
-                throw new CompileFailed("FIXME not implemented!!!");
+                throw new CompileFailed("FIXME not implemented - only global functions right now!!!");
             }
+
             // call to non-built-in function
             source.addAll(List.of(list(
-                    e("Node = global." + globalNames.get(call.f.name) + ";", "enter global closure"),
+                    e("Node = " + globalNames.get(call.f.name) + "_closure;", "entering the closure"),
                     e("return ENTER(Node);")
             )));
 
@@ -174,8 +168,25 @@ public class Stg2ToJavaCompiler {
         return source.toArray(String[]::new);
     }
 
-    private String lfEntry(LambdaForm lf) {
-        return lfNames.computeIfAbsent(lf, l -> "LF_" + (lfIter++) + "_ENTRY");
+    private String pushA(String value) {
+        return "A[--SpA]" + " = " + value + ";";
+    }
+
+    private String popA(int nvars) {
+        return "SpA = SpA + " + nvars + ";";
+    }
+
+    private String readA(int offset) {
+        return "A[SpA + " + offset + "]";
+    }
+
+    private String[] dumpA() {
+        return list(e(dump("SpA = \" + SpA + \"")),
+                e(dump("A = ...\" + Arrays.toString(IntStream.range(SpA-10, A.length).mapToObj(i -> A[i]).toArray(Object[]::new)) + \"")));
+    }
+
+    private String lfEntryCode(LambdaForm lf) {
+        return lfNames.computeIfAbsent(lf, l -> "LF_" + (lfIter++) + "_entry");
     }
 
     private String[] flatten(Stream<String[]> vals) {
@@ -185,14 +196,6 @@ public class Stg2ToJavaCompiler {
     private Stream<Bind> globalNonMainBinds() {
         return graph.values().stream()
                 .filter(b -> !b.var.name.equals(ENTRY_POINT));
-    }
-
-    private String[] globalClosureDeclaration(Bind bind) {
-        return d("public Closure " + globalNames.get(bind.var.name) + " = " + globalClosureInitName(bind) + "();");
-    }
-
-    private String globalClosureInitName(Bind bind) {
-        return "init" + globalNames.get(bind.var.name) + "Closure";
     }
 
     private String[] compileMain() {
@@ -260,11 +263,15 @@ public class Stg2ToJavaCompiler {
     }
 
     static private String[] e(String s, String... comment) {
-        return new String[]{s + (comment.length == 0 ? "" : Arrays.stream(comment).collect(Collectors.joining(" ", "/* ", " */")))};
+        return new String[]{s + inlineComment(comment)};
     }
 
-    static private String[] c(String classDef) {
-        return new String[]{"", classDef + " "};
+    private static String inlineComment(String... comment) {
+        return comment.length == 0 ? "" : Arrays.stream(comment).collect(Collectors.joining(" ", "/* ", " */"));
+    }
+
+    static private String[] c(String classDef, String... comments) {
+        return new String[]{"" + inlineComment(comments), classDef + " "};
     }
 
     static String[] block(String[]... elems) {
@@ -291,8 +298,8 @@ public class Stg2ToJavaCompiler {
         return list(
                 e("import java.util.*;"),
                 e("import java.util.stream.IntStream;"),
-                comment(description),
-                c("public class " + MAIN_CLASS_NAME), mainClassBody()
+
+                c("public class " + MAIN_CLASS_NAME, description), mainClassBody()
         );
     }
 
