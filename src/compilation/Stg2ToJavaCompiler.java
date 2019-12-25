@@ -149,7 +149,7 @@ public class Stg2ToJavaCompiler {
         int nvars = lf.boundVars.length;
         source.addAll(List.of(list(
                 indexMap(lf.boundVars).entrySet().stream()
-                        .map(e -> e("Object " + boundVars.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
+                        .map(e -> e("final Object " + boundVars.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
                         .flatMap(Arrays::stream).toArray(String[]::new),
                 e(popA(nvars), "adjust popped stack all!")
         )));
@@ -216,7 +216,7 @@ public class Stg2ToJavaCompiler {
             for (var bind: let.binds) {
                 source.addAll(List.of(list(
                         // TODO send bound variables via closure
-                        e("Closure local_" + bind.var.name + "_closure  = new Closure(" + compiledBinds.get(bind.var).infoPtr + ");"),
+                        e("final Closure local_" + bind.var.name + "_closure  = new Closure(" + compiledBinds.get(bind.var).infoPtr + ");"),
                         e("H[++Hp] = local_" + bind.var.name + "_closure;", "put on heap")
                 )));
             }
