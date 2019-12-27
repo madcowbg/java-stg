@@ -24,11 +24,12 @@ public class CompileToJavaTest {
                 {"first",  lines("stg2ToJSM/first.stg"), Integer.valueOf(42)},
                 {"simple_app",lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
                 {"simple_program_let",lines("stg2ToJSM/simple_program_let.stg"), Integer.valueOf(42)},
+                {"simple_program_let_and_case",lines("stg2ToJSM/simple_program_let_and_case.stg"), new Object[]{"MkInt", Integer.valueOf(42)}},
         };
     }
 
     @Test(dataProvider = "compileCases")
-    void compileToJava(String name, String[] lines, Object expectedResult) throws ParsingFailed, JASMParsingFailed, jasError, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, ExecutionFailed, InstantiationException {
+    void compileToJava(String name, String[] lines, Object expectedResult) throws ParsingFailed, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, ExecutionFailed, InstantiationException {
         var graph = new Parser(lines).graph();
 
         /* FIXME REMOVE! */

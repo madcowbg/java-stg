@@ -3,6 +3,9 @@ package compilation;
 import tea.core.CompileFailed;
 import tea.stg2.parser.Bind;
 import tea.stg2.parser.LambdaForm;
+import tea.stg2.parser.alt.AlgAlt;
+import tea.stg2.parser.alt.DefaultAlt;
+import tea.stg2.parser.alt.PrimAlt;
 import tea.stg2.parser.expr.*;
 
 import java.util.*;
@@ -27,8 +30,19 @@ public class Stg2ToJavaCompiler {
     private final HashMap<LambdaForm, String> lfNames = new HashMap<>();
     private int lfIter = 0;
 
-    private List<InnerDec> inners = new ArrayList<>();
+    private final List<InnerDec> inners = new ArrayList<>();
     private int nextInner = 0;
+    private final List<CompiledCaseCont> continuations = new ArrayList<>();
+    private int nextCont = 0;
+
+    /* constructor to class */
+    private Map<String, List<String>> classConstructors = Map.of("BoxedInt", List.of("MkInt")); // TODO these could be declared...
+    private Map<String, String> constructorClass = classConstructors.entrySet().stream()
+            .map(e -> e.getValue().stream().collect(Collectors.toMap(v -> v, v -> e.getKey())))
+            .flatMap(m -> m.entrySet().stream())
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    private String src = null;
 
     public Stg2ToJavaCompiler(Bind[] graph, String description) {
         this.description = description;
@@ -44,10 +58,10 @@ public class Stg2ToJavaCompiler {
                         d("public Object[] pointerWords"),      // FIXME typize?
                         d("public Object[] nonPointerWords"),  // FIXME typize?
                         m("Closure(InfoTable infoPointer)"), block(e("this.infoPointer = infoPointer;")),
-                        m("Closure(InfoTable infoPointer, Object[] pointerWords)"), block(
+                        m("Closure(InfoTable infoPointer, Object[] pointerWords, Object[] nonPointerWords)"), block(
                                 e("this.infoPointer = infoPointer;"),
-                                e("this.pointerWords = pointerWords;"))
-                ),
+                                e("this.pointerWords = pointerWords;"),
+                                e("this.nonPointerWords = nonPointerWords;"))),
 
                 c("class InfoTable"), block(
                         d("public final CodeLabel standardEntryCode"),
@@ -64,6 +78,18 @@ public class Stg2ToJavaCompiler {
                 flatten(globalNonMainBinds().map(bind ->
                 d("public Closure " + globalNames.get(bind.var.name) + " = new Closure(" + globalNamesInfo.get(bind.var.name) + ")"))),
 
+                comment("Constructors"),
+                flatten(constructorClass.keySet().stream().map(this::declareConstructor)), // declare all constructors
+
+                m("public CodeLabel cons_MkInt_entry()"), block(
+                        doOnShortB(list(
+                                e("result = new Object[]{\"MkInt\", Node.nonPointerWords[0]};", "argument in first non-pointer"),
+                                e("return null;")
+                        )),
+                        e("final CodeLabel[] conts = (CodeLabel[]) B[SpB--];", "pop continuation vector"),
+                        e("return conts[0];", "single constructor, so we know it is the first one!")
+                ),
+
                 c("interface CodeLabel", "Represents pieces of code"), block(
                         d("CodeLabel jumpTo()")
                 ),
@@ -77,7 +103,6 @@ public class Stg2ToJavaCompiler {
                 ),
 
                 m("public CodeLabel EVAL_MAIN()"), block(
-                        e("B[++SpB] = this::MAIN_RETURN_INT;", "FIXME is that the proper way to return values?"),
                         e("Node = MAIN_closure;"),
                         e("return ENTER(Node);")
                 ),
@@ -90,7 +115,7 @@ public class Stg2ToJavaCompiler {
 
                 comment("Stacks"),
                 d("private Object[] A = new Object[1000]; "), // FIXME implement dynamic allocation and GC
-                d("private CodeLabel[] B = new CodeLabel[1000];"), // FIXME implement dynamic allocation
+                d("private Object[] B = new Object[1000];"), // FIXME implement dynamic allocation
                 d("private Closure[] H = new Closure[1000];"), // FIXME implement dynamic allocation
 
                 comment("Registers"),
@@ -115,8 +140,33 @@ public class Stg2ToJavaCompiler {
                 )),
 
                 comment("Inner infos and codes"),
-                flatten(inners.stream().map(this::writeInfoAndCode))
-                );
+                flatten(inners.stream().map(this::writeInfoAndCode)),
+
+                comment("Continuation codes"),
+                flatten(continuations.stream().map(this::writeContinuationSource)),
+
+                m("public static void main(String[] args)"), block(
+                        e("new " + MAIN_CLASS_NAME + "().eval();"))
+        );
+    }
+
+    private String[] writeContinuationSource(CompiledCaseCont compiledCaseCont) {
+        return list(
+                d("public CodeLabel[] " + compiledCaseCont.returnVectorName + " = " +
+                        Arrays.stream(compiledCaseCont.returnVector)
+                                .map(c -> "this::" + c)
+                                .collect(Collectors.joining(", ", "new CodeLabel[]{", "}"))),
+                flatten(compiledCaseCont.alternativesSource.entrySet().stream().map(e -> list(
+                        m("public CodeLabel " + e.getKey() + "()", compiledCaseCont.alternativesDesc.get(e.getKey())), block(e.getValue())
+                ))));
+    }
+
+    private String[] declareConstructor(String name) {
+        return d("public InfoTable "+ constructorTable(name) + " = new InfoTable(this::cons_" + name + "_entry)", name);
+    }
+
+    private String constructorTable(String name) {
+        return "cons_" + name + "_info";
     }
 
     private String[] writeInfoAndCode(InnerDec innerDec) {
@@ -172,8 +222,13 @@ public class Stg2ToJavaCompiler {
         if (expr instanceof Literal) {
             source.addAll(List.of(list(
                     e("ReturnInt = " + ((Literal) expr).value + ";", "value to be returned"),
-                    e("return B[SpB--];"))));
+                    doOnShortB(e("return this::MAIN_RETURN_INT;")),
+                    e("return (CodeLabel) B[SpB--];"))));
         } else if (expr instanceof Application) {
+            source.addAll(List.of(
+                    comment("Function application expression")
+            ));
+
             var call = ((Application) expr);
 
             for (int i = 0; i < call.args.length; i++) {
@@ -186,15 +241,18 @@ public class Stg2ToJavaCompiler {
                 }
             }
 
-            String call_f_name = resolve_f_name(call.f, boundVars, freeVarsIndex);
+            String call_f_name = resolve_variable(call.f, boundVars, freeVarsIndex);
 
             // call to non-built-in function
             source.addAll(List.of(list(
-                    e("Node = " + call_f_name + ";", "entering the closure"),
+                    e("Node = (Closure) " + call_f_name + ";", "entering the closure"),
                     e("return ENTER(Node);")
             )));
 
         } else if (expr instanceof Let) {
+            source.addAll(List.of(
+                    comment("Evaluating LET expression")
+            ));
             var let = (Let) expr;
             if (let.isRec) {
                 throw new CompileFailed("FIXME not implemented recursive: !!! " + expr.toString());
@@ -203,13 +261,9 @@ public class Stg2ToJavaCompiler {
             // prepare code to be used in evaluation
             var compiledBinds = new HashMap<Variable, InnerDec>();
             for (var bind: let.binds) {
-                if (bind.lf.expr instanceof Cons) {
-                    throw new CompileFailed("FIXME not implemented standard constructor: !!! " + expr.toString());
-                } else {
-                    var inner = new InnerDec(bind.var.name, lambdaFormEntryBlock(bind.lf), bind.lf.toString());
-                    inners.add(inner);
-                    compiledBinds.put(bind.var, inner);
-                }
+                var inner = new InnerDec(bind.var.name, lambdaFormEntryBlock(bind.lf), bind.lf.toString());
+                inners.add(inner);
+                compiledBinds.put(bind.var, inner);
             }
 
             // allocate closures
@@ -227,6 +281,56 @@ public class Stg2ToJavaCompiler {
                 innerBoundVars.put(bind.var, "local_" + bind.var.name + "_closure");
             }
             source.addAll(codeToEvaluateExpression(let.expr, innerBoundVars, freeVarsIndex));
+        } else if (expr instanceof Case) {
+            source.addAll(List.of(
+                    comment("Evaluating CASE expression")
+            ));
+
+            source.addAll(List.of(
+                    comment("Saving local environment...")));
+            // save free and bound vars
+            var localEnvIdxs = new HashMap<Variable, Integer>();
+            for(var boundVar: boundVars.keySet()) {
+                localEnvIdxs.put(boundVar, localEnvIdxs.size());
+                source.addAll(List.of(e(pushA(boundVars.get(boundVar)))));
+            }
+
+            for(var freeVar: freeVarsIndex.keySet()) {
+                localEnvIdxs.put(freeVar, localEnvIdxs.size());
+                source.addAll(List.of(e(pushA(boundVars.get(freeVar)))));
+            }
+
+            var _case = (Case)expr;
+            var compiledCaseCont = compileCaseCont(_case, localEnvIdxs);
+            continuations.add(compiledCaseCont);
+
+            source.addAll(List.of(list(
+                    e("B[++SpB] = " + compiledCaseCont.returnVectorName + ";", "Push continuation return vector"),
+                    codeToEvaluateExpression(_case.expr, boundVars, freeVarsIndex).toArray(String[]::new)
+            )));
+        } else if (expr instanceof Cons) {
+            var cons = (Cons<Atom>)expr;
+            var name = cons.cons;
+            var args = Arrays.stream(cons.args).map(
+                    atom -> {
+                        if (atom instanceof Literal) {
+                            return String.valueOf(((Literal) atom).value);
+                        } else if (atom instanceof Variable) {
+                            return resolve_variable((Variable)atom, boundVars, freeVarsIndex);
+                        } else {
+                            throw new RuntimeException("unrecognized atom: " + atom);
+                        }
+                    }
+            ).collect(Collectors.toList());
+
+            source.addAll(List.of(list(
+                    e("final Closure constructed = new Closure("
+                            + constructorTable(name) + ", "
+                            + "null, "
+                            + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}"))+ ");" ),
+                    e("Node = constructed;"),
+                    e("return ENTER(Node);")
+            )));
         } else {
             throw new CompileFailed("FIXME not implemented: !!! " + expr.toString());
         }
@@ -234,7 +338,85 @@ public class Stg2ToJavaCompiler {
         return source;
     }
 
-    private String resolve_f_name(Variable f, Map<Variable, String> boundVars, Map<Variable, Integer> freeVarsIndex) {
+    private String[] doOnShortB(String[] doIt) {
+        return list(
+            e("if (SpB < 0)", "FIXME compare to stack head"), block(doIt)
+        );
+    }
+
+    private CompiledCaseCont compileCaseCont(Case _case, HashMap<Variable, Integer> localEnvIdxsOnStack) {
+        if (_case.alts[0] instanceof AlgAlt) {
+            var default_ = select(_case.alts, DefaultAlt.class);
+            var algAlts = select(_case.alts, AlgAlt.class);
+            ensure(default_.size() + algAlts.size() == _case.alts.length, "Unrecognized alternative type in " + _case.toString());
+
+            var classEnums = algAlts.stream().map(a -> a.cons.cons).map(constructorClass::get).distinct().collect(Collectors.toList());
+            if (classEnums.size() == 0 || classEnums.stream().anyMatch(Objects::isNull)) {
+                throw new CompileFailed("FIXME not implemented undefined algebraic class?! " + _case.toString());
+            }
+            ensure(classEnums.size() == 1, "Can't have more than one class in an algebraic alternative: " + classEnums.toString());
+
+            var classEnum = classEnums.get(0);
+            var allConstructors = classConstructors.get(classEnum);
+            ensure(algAlts.stream().allMatch(a -> allConstructors.contains(a.cons.cons)), "Some constructor is not available!");
+
+            var alternatives = allConstructors.stream().collect(Collectors.toMap(
+                    Function.identity(),
+                    c -> algAlts.stream().filter(a -> a.cons.cons.equals(c)).findFirst()));
+            ensure (alternatives.values().stream().allMatch(Optional::isPresent), "Some alternatives are undefined!");
+
+            var alternativesCode = alternatives.entrySet().stream().collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    e -> compileAlternative(e.getKey(), e.getValue().get(), localEnvIdxsOnStack)));
+
+            return new CompiledCaseCont(classEnum, allConstructors, alternativesCode, alternatives);
+        } else if (_case.alts[1] instanceof PrimAlt) {
+            throw new CompileFailed("FIXME not implemented primitive alternatives: !!! " + _case.toString());
+        } else {
+            throw new CompileFailed("FIXME not implemented alternatives: !!! " + _case.toString());
+        }
+    }
+
+    private String[] compileAlternative(String classConstructor, AlgAlt alternative, Map<Variable, Integer> localEnvIdxsOnStack) {
+
+        var source = new ArrayList<String>();
+
+        source.addAll(List.of(list(
+                comment("convention:"),
+                comment(" - Node contains the constructed closure"),
+                comment(" - the other arguments are on the stack!"))));
+
+        var newNames = new HashMap<Variable, String>();
+
+        // pop from stack
+        for(var entry: localEnvIdxsOnStack.entrySet()) {
+            newNames.put(entry.getKey(), "local$" + entry.getKey().name);
+            source.addAll(List.of(
+                    e("final Object " + newNames.get(entry.getKey()) + " = A[SpA - " + entry.getValue() + "];", "read " + entry.getKey().name)));
+        }
+        source.addAll(List.of(
+                e(popA(localEnvIdxsOnStack.size()), "pop all passed")));
+
+        // read arguments from Node
+        for (int i = 0; i < alternative.cons.args.length; i++) {
+            var arg = alternative.cons.args[i];
+            newNames.put(arg, "passed$" + arg.name);
+
+            source.addAll(List.of(list(
+                    e("final Object " + newNames.get(arg) + " = Node.nonPointerWords[" + i + "];", "read " + arg.name)
+            )));
+        }
+
+        source.addAll(codeToEvaluateExpression(alternative.expr, newNames, Collections.emptyMap()));
+
+        return source.toArray(String[]::new);
+    }
+
+    private <T, R> List<R> select(T[] vals, Class<R> clazz) {
+        return Arrays.stream(vals).filter(clazz::isInstance).map(clazz::cast).collect(Collectors.toList());
+    }
+
+    private String resolve_variable(Variable f, Map<Variable, String> boundVars, Map<Variable, Integer> freeVarsIndex) {
         if (freeVarsIndex.containsKey(f)) {
             // todo use free vars as well!
             throw new CompileFailed("FIXME not implemented passing via free vars!!!" + f.toString());
@@ -374,22 +556,21 @@ public class Stg2ToJavaCompiler {
         return MAIN_CLASS_NAME;
     }
 
-    private String[] toLines() {
-        return list(
-                e("import java.util.*;"),
-                e("import java.util.stream.IntStream;"),
-
-                c("public class " + MAIN_CLASS_NAME, description), mainClassBody()
-        );
-    }
-
     private static String[] comment(String text) {
         return new String[]{"/* ", text, " */"};
     }
 
     public String compile() {
-        var lines = toLines();
-        return Arrays.stream(lines).collect(Collectors.joining("\n", "", ""));
+        if (src == null) {
+            var lines = list(
+                    e("import java.util.*;"),
+                    e("import java.util.stream.IntStream;"),
+
+                    c("public class " + MAIN_CLASS_NAME, description), mainClassBody()
+            );
+            src = Arrays.stream(lines).collect(Collectors.joining("\n", "", ""));
+        }
+        return src;
     }
 
     public String withLNs() {
@@ -411,6 +592,27 @@ public class Stg2ToJavaCompiler {
             var idx = nextInner++;
             this.infoPtr = "inner$" + idx + name + "_info";
             this.codeEntry = "inner$" + idx + name + "_entry";
+        }
+    }
+
+    private class CompiledCaseCont {
+        public final String returnVectorName;
+        public final String[] returnVector;
+        private final Map<String, String[]> alternativesSource;
+        private final Map<String, String> alternativesDesc;
+
+        private CompiledCaseCont(String classEnum, List<String> allConstructors, Map<String, String[]> alternativesSource, Map<String, Optional<AlgAlt>> alternativesOriginalSource) {
+            var prefix = classEnum + "$" + (nextCont ++) + "$" ;
+            Function<String, String> continuationCodeFun = c -> prefix + c + "_cont";
+            returnVectorName = prefix + "RetVec";
+            this.returnVector = allConstructors.stream().map(continuationCodeFun).toArray(String[]::new);
+            this.alternativesSource = alternativesSource.entrySet().stream().collect(Collectors.toMap(
+                    e -> continuationCodeFun.apply(e.getKey()),
+                    Map.Entry::getValue));
+            this.alternativesDesc = alternativesOriginalSource.entrySet().stream().collect(Collectors.toMap(
+                    e -> continuationCodeFun.apply(e.getKey()),
+                    e -> e.getValue().get().toString()
+            ));
         }
     }
 }
