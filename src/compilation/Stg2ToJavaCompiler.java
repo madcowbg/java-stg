@@ -15,7 +15,11 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Stg2ToJavaCompiler {
-    enum VariableType {Polymorphic, Primitive}
+
+
+    enum VariableType {Polymorphic, Primitive;}
+
+    enum ResolutionType {Bound, Global;}
 
     private static final String ENTRY_POINT = "main";
     private static final String MAIN_CLASS_NAME = "MainAppClass";
@@ -26,8 +30,7 @@ public class Stg2ToJavaCompiler {
     private final String description;
 
     private final Map<String, Bind> graph;
-    private final Map<String, String> globalNames;
-    private final Map<String, String> globalNamesInfo;
+    private final Map<String, CompiledBind> globalBinds;
 
     private final HashMap<Variable, String> lfNames = new HashMap<>();
     private int lfIter = 0;
@@ -48,43 +51,58 @@ public class Stg2ToJavaCompiler {
 
     public Stg2ToJavaCompiler(Bind[] graph, String description) {
         this.description = description;
+
         this.graph = Arrays.stream(graph).collect(Collectors.toMap(b -> b.var.name, Function.identity()));
-        this.globalNames = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "$" + n + "$_closure"));
-        this.globalNamesInfo = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "$" + n + "$_info"));
+        this.globalBinds = this.graph.values().stream().map(CompiledBind::new).collect(Collectors.toMap(CompiledBind::varName, Function.identity()));
 
         Bind main = this.graph.get("main");
         ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
     }
 
+    private String globalClosureName(Variable var) {
+        return "$" + var.name + "$_closure";
+    }
+
+    private String globalInfoName(Variable var) {
+        return "$" + var.name + "$_info";
+    }
+
     private class CompiledBind {
+        private final Bind bind;
 
         private final String[] declareInfoTable;
         private final String[] declareClosure;
-        private final String[] declareEntryFunction;
 
         public CompiledBind(Bind bind) {
-            declareInfoTable =
-                    d("public InfoTable " + globalNamesInfo.get(bind.var.name) + " = new InfoTable(this::"+ lfEntryCode(bind.var) + ")");
-            declareClosure =
-                    d("public Closure " + globalNames.get(bind.var.name) + " = new Closure(" + globalNamesInfo.get(bind.var.name) + ")");
+            this.bind = bind;
 
+            declareInfoTable =
+                    d("public InfoTable " + globalInfoName(bind.var) + " = new InfoTable(this::" + lfEntryCode(bind.var) + ")");
+            declareClosure =
+                    d("public Closure " + globalClosureName(bind.var) + " = new Closure(" + globalInfoName(bind.var) + ")");
+        }
+
+        private final String[] declareEntryFunction() {
             var compiledLF = new CompiledLambdaForm(bind.lf);
 
             // TODO figure out the type!
-            declareEntryFunction =
-                list(
-                        m("public CodeLabel " + lfEntryCode(bind.var) + "()", bind.lf.toString()), block(
-                                debug(e(dump("ENTER: " + sanitize(bind.lf.toString())))),
-                                compiledLF.source
-                        ));
+            return list(
+                    m("public CodeLabel " + lfEntryCode(bind.var) + "()", bind.lf.toString()), block(
+                            debug(e(dump("ENTER: " + sanitize(bind.lf.toString())))),
+                            compiledLF.source
+                    ));
         }
 
         public String[] toCode() {
             return list(
                     declareInfoTable,
                     declareClosure,
-                    declareEntryFunction
+                    declareEntryFunction()
             );
+        }
+
+        public String varName() {
+            return bind.var.name;
         }
     }
 
@@ -127,7 +145,7 @@ public class Stg2ToJavaCompiler {
                         m("InfoTable(CodeLabel standardEntryCode)"), block(e("this.standardEntryCode = standardEntryCode;"))),
 
                 comment("Global infos, closures and entry functions"),
-                flatten(globalBinds().map(CompiledBind::new).map(CompiledBind::toCode)),
+                flatten(globalBinds.values().stream().map(CompiledBind::toCode)),
 
                 comment("Constructors"),
                 flatten(constructorClass.keySet().stream().map(this::declareConstructor)), // declare all constructors
@@ -200,10 +218,6 @@ public class Stg2ToJavaCompiler {
         );
     }
 
-    private Stream<Bind> globalBinds() {
-        return graph.values().stream();
-    }
-
     private String[] writeContinuationSource(CompiledCaseCont compiledCaseCont) {
         return list(
                 d("public CodeLabel[] " + compiledCaseCont.returnVectorName + " = " +
@@ -248,14 +262,10 @@ public class Stg2ToJavaCompiler {
         private final String[] compiled;
 
         CompiledExpression(Expr expr, LocalEnvironment env) {
-            List<String> source = new ArrayList<>();
-
             if (expr instanceof Literal) {
-                source.addAll(List.of(list(
-                        e("ReturnInt = " + ((Literal) expr).value + ";", "value to be returned"),
-                        doOnShortB(e("return this::MAIN_RETURN_INT;")),
-                        e("return (CodeLabel) B[SpB--];"))));
+                compiled = compileLiteralBlock((Literal) expr);
             } else if (expr instanceof Application) {
+                List<String> source = new ArrayList<>();
                 source.addAll(List.of(
                         comment("Function application expression")
                 ));
@@ -272,15 +282,21 @@ public class Stg2ToJavaCompiler {
                     }
                 }
 
-                String call_f_name = env.resolve(call.f);
+                var resolution = env.resolve(call.f);
+                if (resolution.type == ResolutionType.Global) {
+                    // we know what the function is, provide argument types as requested
+                    // TODO implement
+                }
+                String call_f_name = resolution.resolvedName;
 
                 // call to non-built-in function
                 source.addAll(List.of(list(
                         e("Node = (Closure) " + call_f_name + ";", "entering the closure"),
                         e("return ENTER(Node);")
                 )));
-
+                compiled = source.toArray(String[]::new);
             } else if (expr instanceof Let) {
+                List<String> source = new ArrayList<>();
                 source.addAll(List.of(
                         comment("Evaluating LET expression")
                 ));
@@ -310,7 +326,9 @@ public class Stg2ToJavaCompiler {
                 LocalEnvironment inner = env.rebind(let.binds);
 
                 source.addAll(List.of(new CompiledExpression(let.expr, inner).compiled));
+                compiled = source.toArray(String[]::new);
             } else if (expr instanceof Case) {
+                List<String> source = new ArrayList<>();
                 source.addAll(List.of(
                         comment("Evaluating CASE expression")
                 ));
@@ -330,6 +348,7 @@ public class Stg2ToJavaCompiler {
                         e("B[++SpB] = " + compiledCaseCont.returnVectorName + ";", "Push continuation return vector"),
                         new CompiledExpression(_case.expr, env).compiled
                 )));
+                compiled = source.toArray(String[]::new);
             } else if (expr instanceof Cons) {
                 var cons = (Cons<Atom>) expr;
                 var name = cons.cons;
@@ -338,13 +357,14 @@ public class Stg2ToJavaCompiler {
                             if (atom instanceof Literal) {
                                 return String.valueOf(((Literal) atom).value);
                             } else if (atom instanceof Variable) {
-                                return env.resolve((Variable)atom);
+                                return env.resolve((Variable)atom).resolvedName;
                             } else {
                                 throw new RuntimeException("unrecognized atom: " + atom);
                             }
                         }
                 ).collect(Collectors.toList());
 
+                List<String> source = new ArrayList<>();
                 source.addAll(List.of(list(
                         e("final Closure constructed = new Closure("
                                 + constructorTable(name) + ", "
@@ -353,16 +373,21 @@ public class Stg2ToJavaCompiler {
                         e("Node = constructed;"),
                         e("return ENTER(Node);")
                 )));
+                compiled = source.toArray(String[]::new);
             } else {
                 throw new CompileFailed("FIXME not implemented: !!! " + expr.toString());
             }
-
-            compiled = source.toArray(String[]::new);
         }
-
     }
 
-    private String[] doOnShortB(String[] doIt) {
+    private static String[] compileLiteralBlock(Literal expr) {
+        return list(
+                e("ReturnInt = " + expr.value + ";", "value to be returned"),
+                doOnShortB(e("return this::MAIN_RETURN_INT;")),
+                e("return (CodeLabel) B[SpB--];"));
+    }
+
+    private static String[] doOnShortB(String[] doIt) {
         return list(
             e("if (SpB < 0)", "FIXME compare to stack head"), block(doIt)
         );
@@ -635,15 +660,15 @@ public class Stg2ToJavaCompiler {
             return new LocalEnvironment(innerBoundVars, freeVarsIndexMap);
         }
 
-        public String resolve(Variable f) {
+        public Resolution resolve(Variable f) {
             if (freeVarsIndexMap.containsKey(f)) {
                 // todo use free vars as well!
                 throw new CompileFailed("FIXME not implemented passing via free vars!!!" + f.toString());
             } else if (boundVarNames.containsKey(f)) {
-                return boundVarNames.get(f);
+                return new Resolution(boundVarNames.get(f), ResolutionType.Bound, f);
             } else {
-                ensure(globalNames.containsKey(f.name), "Can't find variable " + f + " in any environment!");
-                return globalNames.get(f.name);
+                ensure(globalBinds.containsKey(f.name), "Can't find variable " + f + " in any environment!");
+                return new Resolution(globalClosureName(f), ResolutionType.Global, f);
             }
         }
 
@@ -721,6 +746,19 @@ public class Stg2ToJavaCompiler {
             public StackPop(ArrayList<String> source, HashMap<Variable, String> newNames) {
                 this.source = source;
                 this.environment = new LocalEnvironment(newNames, Collections.emptyMap());
+            }
+        }
+
+
+        private class Resolution {
+            private final String resolvedName;
+            private final ResolutionType type;
+            private final Variable var;
+
+            public Resolution(String resolvedName, ResolutionType type, Variable var) {
+                this.resolvedName = resolvedName;
+                this.type = type;
+                this.var = var;
             }
         }
     }
