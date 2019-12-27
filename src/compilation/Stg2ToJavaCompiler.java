@@ -235,8 +235,9 @@ public class Stg2ToJavaCompiler {
                 comment("Continuation codes"),
                 flatten(continuations.stream().map(this::writeContinuationSource)),
 
-                m("public static void main(String[] args)"), block(
-                        e("new " + MAIN_CLASS_NAME + "().eval();"))
+                debug(list(
+                        m("public static void main(String[] args)", "for debugging purposes only"), block(
+                                e("new " + MAIN_CLASS_NAME + "().eval();"))))
         );
     }
 
