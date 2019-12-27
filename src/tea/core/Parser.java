@@ -5,11 +5,12 @@ import tea.tokenizer.AnnotatedToken;
 import tea.tokenizer.Tokenizer;
 
 import java.util.ArrayList;
+import java.util.Set;
 
 /**
  * Core language
  * var v1 v2 ... = e;
- * e -> int | v | (f e1 e2)
+ * e -> int | v | (f e1 e2 ...) | (primop e1 e2 ...)
  */
 public class Parser {
 
@@ -17,6 +18,7 @@ public class Parser {
     private static final String OPEN_BRACE = "(";
     private static final String CLOSE_BRACE = ")";
     private static final String BIND_SEPARATOR = ";";
+    private static final Set<String> PRIM_OPS = Set.of("+", "-", "*");
 
     private final AnnotatedToken[] tokens;
     private final Bind[] binds;
@@ -44,16 +46,28 @@ public class Parser {
             return readLiteral();
         } else if (token().text().equals(OPEN_BRACE)) {
             checkAndSkip(OPEN_BRACE);
-            var f = readExpression();
-            var args = new ArrayList<Expr>();
-            while (!token().text().equals(CLOSE_BRACE)) {
-                args.add(readExpression());
+            if (PRIM_OPS.contains(token().text())) {
+                var op = tokenAndAdvance().text();
+                var args = readArgsOfExpression();
+                checkAndSkip(CLOSE_BRACE);
+                return new PrimOpApp(op, args.toArray(Expr[]::new));
+            } else {
+                var f = readExpression();
+                var args = readArgsOfExpression();
+                checkAndSkip(CLOSE_BRACE);
+                return new Application(f, args.toArray(Expr[]::new));
             }
-            checkAndSkip(CLOSE_BRACE);
-            return new Application(f, args.toArray(Expr[]::new));
         } else {
             return readVariable();
         }
+    }
+
+    private ArrayList<Expr> readArgsOfExpression() throws ParsingFailed {
+        var args = new ArrayList<Expr>();
+        while (!token().text().equals(CLOSE_BRACE)) {
+            args.add(readExpression());
+        }
+        return args;
     }
 
     private Expr readVariable() throws ParsingFailed {

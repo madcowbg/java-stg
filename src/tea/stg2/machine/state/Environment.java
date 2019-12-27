@@ -11,6 +11,7 @@ import tea.stg2.machine.value.Value;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -89,5 +90,9 @@ public class Environment {
             }
         }
         return res;
+    }
+
+    public Set<Addr> addrs() {
+        return vals.values().stream().filter(Addr.class::isInstance).map(Addr.class::cast).collect(Collectors.toSet());
     }
 }

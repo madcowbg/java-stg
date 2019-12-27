@@ -14,6 +14,7 @@ import tea.stg2.parser.alt.PrimAlt;
 import tea.stg2.parser.expr.*;
 
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -94,7 +95,7 @@ public class AbstractMachine {
                 debug("(5)  Eval (c xs) rho");
                 var cons = (Cons<Atom>)eAsEval().e;
                 e = new ReturnCon(new Data(cons.cons), vals(eAsEval().localEnv, globalEnv, cons.args));
-            } else if (e instanceof ReturnCon && !returnStack.isEmpty()) {
+            } else if (e instanceof ReturnCon && returnStack.size() > 0) {
                 var c = ((ReturnCon) e).cons;
                 var ws = ((ReturnCon) e).vals;
 
@@ -222,6 +223,8 @@ public class AbstractMachine {
             } else {
                 break;
             }
+
+            gc();
         }
 
         if (argumentStack.size() > 0) {
@@ -239,6 +242,51 @@ public class AbstractMachine {
 
         debug(this.toString());
         return e;
+    }
+
+    private void gc() {
+        Set<Addr> endPoints = new HashSet<>(globalEnv.addrs());
+        if (e instanceof Eval) {
+            endPoints.addAll(((Eval) e).localEnv.addrs());
+        }
+
+        if (e instanceof Enter) {
+            endPoints.add(((Enter) e).a);
+        }
+
+        if (e instanceof ReturnCon) {
+            endPoints.addAll(Arrays.stream(((ReturnCon) e).vals).filter(Addr.class::isInstance).map(Addr.class::cast).collect(Collectors.toSet()));
+        }
+
+        endPoints.addAll(continuationAddresses(returnStack));
+        endPoints.addAll(argumentAddresses(argumentStack));
+        endPoints.addAll(updateStack.stream().map(u -> u.argumentStack).map(AbstractMachine::argumentAddresses).flatMap(Set::stream).collect(Collectors.toSet()));
+        endPoints.addAll(updateStack.stream().map(u -> u.returnStack).map(AbstractMachine::continuationAddresses).flatMap(Set::stream).collect(Collectors.toSet()));
+        endPoints.addAll(updateStack.stream().map(u -> u.a).collect(Collectors.toSet()));
+
+        var visited = new HashSet<Addr>();
+        var next = new Stack<Addr>();
+        next.addAll(endPoints);
+        while (next.size() > 0) {
+            var u = next.pop();
+            assert heap.at(u) != null : "can't get at address " + u;
+            var closureReferences = Arrays.stream(heap.at(u).freeVarValues)
+                    .filter(Addr.class::isInstance)
+                    .map(Addr.class::cast)
+                    .filter(Predicate.not(visited::contains)).collect(Collectors.toSet());
+            next.addAll(closureReferences);
+            visited.add(u);
+        }
+
+        heap.retainOnlyUsed(visited);
+    }
+
+    private static Set<Addr> argumentAddresses(Stack<Value> argumentStack) {
+        return argumentStack.stream().filter(Addr.class::isInstance).map(Addr.class::cast).collect(Collectors.toSet());
+    }
+
+    private static Set<Addr> continuationAddresses(Stack<Continuation> returnStack) {
+        return returnStack.stream().flatMap(c -> c.localEnv.addrs().stream()).collect(Collectors.toSet());
     }
 
     private Int calc(String op, Int[] args) throws ExecutionFailed {

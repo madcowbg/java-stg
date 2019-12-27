@@ -16,7 +16,11 @@ public class AbstractMachineCore {
     @DataProvider
     public static Object[][] executeCompiledStg() throws IOException {
         return new Object[][]{
-                {lines("core/first.c"), "ReturnInt 5#"},
+                {lines("core/first.core"), "ReturnInt 5#"},
+                {lines("core/calculation.core"), "ReturnInt 42#"},
+                {lines("core/complex_args.core"), "ReturnInt 42#"},
+                {lines("core/curried_args.core"), "ReturnInt 42#"},
+//                {lines("core/lambda.core"), "ReturnInt 5#"},
         };
     }
 
