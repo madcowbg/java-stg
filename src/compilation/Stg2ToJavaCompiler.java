@@ -82,7 +82,9 @@ public class Stg2ToJavaCompiler {
                 flatten(constructorClass.keySet().stream().map(this::declareConstructor)), // declare all constructors
 
                 m("public CodeLabel cons_MkInt_entry()"), block(
+                        debug(e(dump("entering MkInt"))),
                         doOnShortB(list(
+                                debug(e(dump("returning MkInt from eval"))),
                                 e("result = new Object[]{\"MkInt\", Node.nonPointerWords[0]};", "argument in first non-pointer"),
                                 e("return null;")
                         )),
@@ -103,6 +105,7 @@ public class Stg2ToJavaCompiler {
                 ),
 
                 m("public CodeLabel EVAL_MAIN()"), block(
+                        debug(e(dump("EVAL_MAIN"))),
                         e("Node = MAIN_closure;"),
                         e("return ENTER(Node);")
                 ),
@@ -172,7 +175,11 @@ public class Stg2ToJavaCompiler {
     private String[] writeInfoAndCode(InnerDec innerDec) {
         return list(
                 d("InfoTable " + innerDec.infoPtr + " = new InfoTable(this::" + innerDec.codeEntry + ")"),
-                m("public CodeLabel " + innerDec.codeEntry + "()", innerDec.definition), block(innerDec.body)
+
+                m("public CodeLabel " + innerDec.codeEntry + "()", innerDec.definition), block(
+                        debug(e(dump(sanitize(innerDec.definition)))),
+                        innerDec.body
+                )
         );
 
     }
@@ -180,9 +187,14 @@ public class Stg2ToJavaCompiler {
     private String[] globalBindsFunctions(Bind bind) {
         return list(
                 m("public CodeLabel " + lfEntryCode(bind.lf) + "()", bind.lf.toString()), block(
+                        debug(e(dump(sanitize(bind.lf.toString())))),
                         lambdaFormEntryBlock(bind.lf)
                 )
         );
+    }
+
+    private static String sanitize(String toString) {
+        return toString.replace("\\n", "\\\\n");
     }
 
     private String[] lambdaFormEntryBlock(LambdaForm lf) {
