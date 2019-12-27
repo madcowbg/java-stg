@@ -89,7 +89,8 @@ public class Stg2ToJavaCompiler {
             return list(
                     m("public CodeLabel " + lfEntryCode(bind.var) + "()", bind.lf.toString()), block(
                             debug(e(dump("ENTER: " + sanitize(bind.lf.toString())))),
-                            compiledLF.source
+                            compiledLF.body,
+                            compiledLF.jump
                     ));
         }
 
@@ -107,7 +108,8 @@ public class Stg2ToJavaCompiler {
     }
 
     private class CompiledLambdaForm {
-        private final String[] source;
+        private final String[] body;
+        private final String[] jump;
 
         CompiledLambdaForm(LambdaForm lf) {
             var localEnv = environmentFor(lf);
@@ -121,7 +123,7 @@ public class Stg2ToJavaCompiler {
                     e(popA(nvars), "adjust popped stack all!"));
 
             var compiledExpr = new CompiledExpression(lf.expr, localEnv);;
-            this.source = list(
+            this.body = list(
                     // TODO argument satisfaction check
                     // TODO stack overflow check
                     // TODO heap overflow check
@@ -130,9 +132,9 @@ public class Stg2ToJavaCompiler {
                     popBoundVarsCode,
 
                     // evaluate the expression
-                    compiledExpr.body,
-                    compiledExpr.jump
+                    compiledExpr.body
             );
+            this.jump = compiledExpr.jump;
         }
     }
 
@@ -218,7 +220,7 @@ public class Stg2ToJavaCompiler {
                         )),
 
                 comment("Inner infos and codes"),
-                flatten(inners.stream().map(this::writeInfoAndCode)),
+                flatten(inners.stream().map(InnerDec::writeInfoAndCode)),
 
                 comment("Continuation codes"),
                 flatten(continuations.stream().map(this::writeContinuationSource)),
@@ -245,18 +247,6 @@ public class Stg2ToJavaCompiler {
 
     private String constructorTable(String name) {
         return "cons_" + name + "_info";
-    }
-
-    private String[] writeInfoAndCode(InnerDec innerDec) {
-        return list(
-                d("InfoTable " + innerDec.infoPtr + " = new InfoTable(this::" + innerDec.codeEntry + ")"),
-
-                m("public CodeLabel " + innerDec.codeEntry + "()", innerDec.definition), block(
-                        debug(e(dump("ENTER: " + sanitize(innerDec.definition)))),
-                        innerDec.body
-                )
-        );
-
     }
 
     private static String sanitize(String toString) {
@@ -331,7 +321,7 @@ public class Stg2ToJavaCompiler {
                 // prepare code to be used in evaluation
                 var compiledBinds = new HashMap<Variable, InnerDec>();
                 for (var bind: let.binds) {
-                    var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf).source, bind.lf.toString());
+                    var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf), bind.lf.toString());
                     inners.add(inner);
                     compiledBinds.put(bind.var, inner);
                 }
@@ -616,19 +606,33 @@ public class Stg2ToJavaCompiler {
     }
 
     private class InnerDec {
-        private final String[] body;
-        public final String definition;
+        private final CompiledLambdaForm compiledLF;
+
+        public final String comments;
 
         public final String infoPtr;
         public final String codeEntry;
 
-        public InnerDec(String name, String[] body, String definition) {
-            this.body = body;
-            this.definition = definition;
+        public InnerDec(String name, CompiledLambdaForm compiledLF, String comments) {
+            this.comments = comments;
+
+            this.compiledLF = compiledLF;
 
             var idx = nextInner++;
             this.infoPtr = "inner$" + idx + name + "_info";
             this.codeEntry = "inner$" + idx + name + "_entry";
+        }
+
+        private String[] writeInfoAndCode() {
+            return list(
+                    d("InfoTable " + infoPtr + " = new InfoTable(this::" + codeEntry + ")"),
+
+                    m("public CodeLabel " + codeEntry + "()", comments), block(
+                            debug(e(dump("ENTER: " + sanitize(comments)))),
+                            compiledLF.body,
+                            compiledLF.jump
+                    )
+            );
         }
     }
 
