@@ -112,16 +112,26 @@ public class Stg2ToJavaCompiler {
         CompiledLambdaForm(LambdaForm lf) {
             var localEnv = environmentFor(lf);
 
+            // pop bound vars
+            int nvars = lf.boundVars.length;
+            var popBoundVarsCode = list(
+                    indexMap(lf.boundVars).entrySet().stream()
+                            .map(e -> e("final Object " + localEnv.boundVarNames.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
+                            .flatMap(Arrays::stream).toArray(String[]::new),
+                    e(popA(nvars), "adjust popped stack all!"));
+
+            var compiledExpr = new CompiledExpression(lf.expr, localEnv);;
             this.source = list(
                     // TODO argument satisfaction check
                     // TODO stack overflow check
                     // TODO heap overflow check
 
                     // pop bound vars
-                    localEnv.popBoundVarsCode,
+                    popBoundVarsCode,
 
                     // evaluate the expression
-                    new CompiledExpression(lf.expr, localEnv).compiled
+                    compiledExpr.body,
+                    compiledExpr.jump
             );
         }
     }
@@ -276,11 +286,16 @@ public class Stg2ToJavaCompiler {
     }
 
     private class CompiledExpression {
+        private final String[] body;
+        private final String[] jump;
 
-        private final String[] compiled;
         CompiledExpression(Expr expr, LocalEnvironment env) {
             if (expr instanceof Literal) {
-                compiled = compileLiteralBlock((Literal) expr);
+                body = list(
+                        e("ReturnInt = " + ((Literal) expr).value + ";", "value to be returned"),
+                        doOnShortB(e("return this::MAIN_RETURN_INT;")));
+                jump =
+                        e("return (CodeLabel) B[SpB--];");
             } else if (expr instanceof Application) {
                 var call = ((Application) expr);
                 var args = Arrays.stream(call.args).map(this::compileArgument);
@@ -292,11 +307,13 @@ public class Stg2ToJavaCompiler {
                 }
                 String call_f_name = resolution.resolvedName;
 
-                compiled = list(
+                body = list(
                         comment("Function application expression"),
                         // push arguments to appropriate stacks
-                        flatten(args.map(CompiledArgument::pushToStack)),
+                        flatten(args.map(CompiledArgument::pushToStack))
+                );
 
+                jump = list(
                         // call to non-built-in function
                         e("Node = (Closure) " + call_f_name + ";", "entering the closure"),
                         e("return ENTER(Node);")
@@ -331,8 +348,11 @@ public class Stg2ToJavaCompiler {
                 // add to bound variables environment
                 LocalEnvironment inner = env.rebind(let.binds);
 
-                source.addAll(List.of(new CompiledExpression(let.expr, inner).compiled));
-                compiled = source.toArray(String[]::new);
+                var letExpr = new CompiledExpression(let.expr, inner);
+                source.addAll(List.of(letExpr.body));
+                body = source.toArray(String[]::new);
+
+                jump = letExpr.jump;
             } else if (expr instanceof Case) {
                 List<String> source = new ArrayList<>();
                 source.addAll(List.of(
@@ -350,11 +370,14 @@ public class Stg2ToJavaCompiler {
                 var compiledCaseCont = compileCaseCont(_case, stackSave.localEnvIdxs);
                 continuations.add(compiledCaseCont);
 
+                var caseExpr = new CompiledExpression(_case.expr, env);
                 source.addAll(List.of(list(
                         e("B[++SpB] = " + compiledCaseCont.returnVectorName + ";", "Push continuation return vector"),
-                        new CompiledExpression(_case.expr, env).compiled
+                        caseExpr.body
                 )));
-                compiled = source.toArray(String[]::new);
+
+                body = source.toArray(String[]::new);
+                jump = caseExpr.jump;
             } else if (expr instanceof Cons) {
                 var cons = (Cons<Atom>) expr;
                 var name = cons.cons;
@@ -375,11 +398,13 @@ public class Stg2ToJavaCompiler {
                         e("final Closure constructed = new Closure("
                                 + constructorTable(name) + ", "
                                 + "null, "
-                                + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}")) + ");"),
+                                + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}")) + ");"))));
+                body = source.toArray(String[]::new);
+
+                jump = list(
                         e("Node = constructed;"),
                         e("return ENTER(Node);")
-                )));
-                compiled = source.toArray(String[]::new);
+                );
             } else {
                 throw new CompileFailed("FIXME not implemented: !!! " + expr.toString());
             }
@@ -393,13 +418,6 @@ public class Stg2ToJavaCompiler {
                 throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
             }
         }
-    }
-
-    private static String[] compileLiteralBlock(Literal expr) {
-        return list(
-                e("ReturnInt = " + expr.value + ";", "value to be returned"),
-                doOnShortB(e("return this::MAIN_RETURN_INT;")),
-                e("return (CodeLabel) B[SpB--];"));
     }
 
     private static String[] doOnShortB(String[] doIt) {
@@ -442,10 +460,9 @@ public class Stg2ToJavaCompiler {
     }
 
     private String[] compileAlternative(String classConstructor, AlgAlt alternative, LocalEnvironment.SavedOnStack localEnvIdxsOnStack) {
-
-        var source = new ArrayList<String>();
-
         var popStackToLocal = localEnvIdxsOnStack.stackPopAndReadNode(alternative.cons.args);
+        var altExp = new CompiledExpression(alternative.expr, popStackToLocal.environment);
+
         return list(
                 comment(
                         "convention:",
@@ -454,7 +471,8 @@ public class Stg2ToJavaCompiler {
 
                 // pop from stack
                 popStackToLocal.source.toArray(String[]::new),
-                new CompiledExpression(alternative.expr, popStackToLocal.environment).compiled);
+                altExp.body,
+                altExp.jump);
     }
 
     private <T, R> List<R> select(T[] vals, Class<R> clazz) {
@@ -644,25 +662,14 @@ public class Stg2ToJavaCompiler {
 
         private final Map<Variable, Integer> freeVarsIndexMap;
 
-        private final String[] popBoundVarsCode;
-
         public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
             this.freeVarsIndexMap = indexMap(freeVars);
 
             this.boundVarNames = Arrays.stream(boundVars).collect(
                     Collectors.toMap(Function.identity(), name -> "LOCAL_" + name));
-
-            // pop bound vars
-            int nvars = boundVars.length;
-            this.popBoundVarsCode = list(
-                    indexMap(boundVars).entrySet().stream()
-                            .map(e -> e("final Object " + boundVarNames.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
-                            .flatMap(Arrays::stream).toArray(String[]::new),
-                    e(popA(nvars), "adjust popped stack all!"));
         }
 
         public LocalEnvironment(Map<Variable, String> innerBoundVars, Map<Variable, Integer> freeVarsIndexMap) {
-            this.popBoundVarsCode = null; // FIXME this is not updated!
             this.boundVarNames = innerBoundVars;
             this.freeVarsIndexMap = freeVarsIndexMap;
         }
