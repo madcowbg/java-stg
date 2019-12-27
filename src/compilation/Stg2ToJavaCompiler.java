@@ -21,6 +21,21 @@ public class Stg2ToJavaCompiler {
 
     enum ResolutionType {Bound, Global;}
 
+    enum Stack {
+        A("A", "SpA", "-"),
+        B("B", "SpB", "+");
+
+        public final String name;
+        public final String ptr;
+        public final String dir;
+
+        Stack(String name, String ptr, String dir) {
+            this.name = name;
+            this.ptr = ptr;
+            this.dir = dir;
+        }
+    };
+
     private static final String ENTRY_POINT = "main";
     private static final String MAIN_CLASS_NAME = "MainAppClass";
     private static final String OFFSET = "    ";
@@ -656,21 +671,39 @@ public class Stg2ToJavaCompiler {
         return new LocalEnvironment(lf.boundVars, lf.freeVars);
     }
 
+    interface Address {
+        String code();
+    }
+
+    class StackOffset implements Address {
+
+        private final String code;
+
+        public StackOffset(Stack stack, int offset) {
+            this.code = stack.name + "[" + stack.ptr + " " + stack.dir + " " + offset + "]";
+        }
+
+        @Override
+        public String code() {
+            return code;
+        }
+    }
+
     public class LocalEnvironment {
         private final Map<Variable, String> localVarNames;
 
         private final Map<Variable, Integer> freeVarsIndexMap;
 
-        private final Map<Variable, String> boundVarLocations;
+        private final Map<Variable, Address> boundVarLocations;
 
         public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
             this(
                     new HashMap<>(),
                     indexMap(freeVars),
-                    IntStream.range(0, boundVars.length).boxed().collect(Collectors.toMap(i -> boundVars[i], i -> "A[SpA - " + (1+i) + "]")));
+                    IntStream.range(0, boundVars.length).boxed().collect(Collectors.toMap(i -> boundVars[i], i -> new StackOffset(Stack.A, (1+i)))));
         }
 
-        public LocalEnvironment(Map<Variable, String> localVarNames, Map<Variable, Integer> freeVarsIndexMap, Map<Variable, String> boundVarLocations) {
+        public LocalEnvironment(Map<Variable, String> localVarNames, Map<Variable, Integer> freeVarsIndexMap, Map<Variable, Address> boundVarLocations) {
             this.localVarNames = localVarNames;
             this.freeVarsIndexMap = freeVarsIndexMap;
             this.boundVarLocations = boundVarLocations;
@@ -691,7 +724,7 @@ public class Stg2ToJavaCompiler {
             } else if (localVarNames.containsKey(f)) {
                 return new Resolution(localVarNames.get(f), ResolutionType.Bound, f);
             } else if (boundVarLocations.containsKey(f)) {
-                return new Resolution(boundVarLocations.get(f), ResolutionType.Bound, f);
+                return new Resolution(boundVarLocations.get(f).code(), ResolutionType.Bound, f);
             } else {
                 ensure(globalBinds.containsKey(f.name), "Can't find variable " + f + " in any environment!");
                 return new Resolution(globalClosureName(f), ResolutionType.Global, f);
