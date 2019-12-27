@@ -201,21 +201,19 @@ public class Stg2ToJavaCompiler {
     }
 
     private String[] lambdaFormEntryBlock(LambdaForm lf) {
+        var localEnv = environmentFor(lf);
+
         List<String> source = new ArrayList<>();
 
-        var localEnv = new LocalEnvironment(lf.boundVars, lf.freeVars);
 
         // TODO argument satisfaction check
         // TODO stack overflow check
         // TODO heap overflow check
 
-        source.addAll(
-                localEnv.popBoundVars()
-        );
+        source.addAll(List.of(
+                localEnv.popBoundVarsCode));
 
-        Expr expr = lf.expr;
-
-        source.addAll(codeToEvaluateExpression(expr, localEnv));
+        source.addAll(codeToEvaluateExpression(lf.expr, localEnv));
 
         return source.toArray(String[]::new);
     }
@@ -344,7 +342,7 @@ public class Stg2ToJavaCompiler {
         );
     }
 
-    private CompiledCaseCont compileCaseCont(Case _case, Map<Variable, Integer> localEnvIdxsOnStack) {
+    private CompiledCaseCont compileCaseCont(Case _case, LocalEnvironment.SavedOnStack localEnvIdxsOnStack) {
         if (_case.alts[0] instanceof AlgAlt) {
             var default_ = select(_case.alts, DefaultAlt.class);
             var algAlts = select(_case.alts, AlgAlt.class);
@@ -377,7 +375,7 @@ public class Stg2ToJavaCompiler {
         }
     }
 
-    private String[] compileAlternative(String classConstructor, AlgAlt alternative, Map<Variable, Integer> localEnvIdxsOnStack) {
+    private String[] compileAlternative(String classConstructor, AlgAlt alternative, LocalEnvironment.SavedOnStack localEnvIdxsOnStack) {
 
         var source = new ArrayList<String>();
 
@@ -387,28 +385,12 @@ public class Stg2ToJavaCompiler {
                         " - Node contains the constructed closure",
                         " - the other arguments are on the stack!"))));
 
-        var newNames = new HashMap<Variable, String>();
+        var pop = localEnvIdxsOnStack.stackPopAndReadNode(alternative.cons.args);
 
         // pop from stack
-        for(var entry: localEnvIdxsOnStack.entrySet()) {
-            newNames.put(entry.getKey(), "local$" + entry.getKey().name);
-            source.addAll(List.of(
-                    e("final Object " + newNames.get(entry.getKey()) + " = A[SpA - " + entry.getValue() + "];", "read " + entry.getKey().name)));
-        }
-        source.addAll(List.of(
-                e(popA(localEnvIdxsOnStack.size()), "pop all passed")));
+        source.addAll(pop.source);
 
-        // read arguments from Node
-        for (int i = 0; i < alternative.cons.args.length; i++) {
-            var arg = alternative.cons.args[i];
-            newNames.put(arg, "passed$" + arg.name);
-
-            source.addAll(List.of(list(
-                    e("final Object " + newNames.get(arg) + " = Node.nonPointerWords[" + i + "];", "read " + arg.name)
-            )));
-        }
-
-        source.addAll(codeToEvaluateExpression(alternative.expr, new LocalEnvironment(new Variable[]{}, newNames, Collections.emptyMap())));
+        source.addAll(codeToEvaluateExpression(alternative.expr, pop.environment));
 
         return source.toArray(String[]::new);
     }
@@ -591,44 +573,53 @@ public class Stg2ToJavaCompiler {
         }
     }
 
-    private class LocalEnvironment {
-        private final Variable[] boundVars;
+    enum VariableType {Polymorphic, Primitive;}
+
+    public LocalEnvironment environmentFor(LambdaForm lf) {
+        return new LocalEnvironment(lf.boundVars, lf.freeVars, new HashMap<>());
+    }
+
+    public class LocalEnvironment {
         private final Map<Variable, String> boundVarNames;
 
         private final Map<Variable, Integer> freeVarsIndexMap;
 
-        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
-            this.boundVars = boundVars;
+        private final Map<Variable, VariableType> types;
+
+        private final String[] popBoundVarsCode;
+
+        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars, Map<Variable, VariableType> types) {
+            this.types = types;
 
             this.freeVarsIndexMap = indexMap(freeVars);
 
             this.boundVarNames = Arrays.stream(boundVars).collect(
                     Collectors.toMap(Function.identity(), name -> "LOCAL_" + name));
+
+            // pop bound vars
+            int nvars = boundVars.length;
+            this.popBoundVarsCode = list(
+                    indexMap(boundVars).entrySet().stream()
+                            .map(e -> e("final Object " + boundVarNames.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
+                            .flatMap(Arrays::stream).toArray(String[]::new),
+                    e(popA(nvars), "adjust popped stack all!"));
         }
 
-        public LocalEnvironment(Variable[] boundVars, Map<Variable, String> innerBoundVars, Map<Variable, Integer> freeVarsIndexMap) {
-            this.boundVars = boundVars; // FIXME this is not updated!
+        public LocalEnvironment(Map<Variable, String> innerBoundVars, Map<Variable, Integer> freeVarsIndexMap, Map<Variable, VariableType> types) {
+            this.types = types;
+            this.popBoundVarsCode = null; // FIXME this is not updated!
             this.boundVarNames = innerBoundVars;
             this.freeVarsIndexMap = freeVarsIndexMap;
         }
 
-        public List<String> popBoundVars() {
-            // pop bound vars
-            int nvars = boundVars.length;
-            return List.of(list(
-                    indexMap(boundVars).entrySet().stream()
-                            .map(e -> e("final Object " + boundVarNames.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
-                            .flatMap(Arrays::stream).toArray(String[]::new),
-                    e(popA(nvars), "adjust popped stack all!")
-            ));
-        }
-
         public LocalEnvironment rebind(Bind[] newBinds) {
+            var newTypes = new HashMap<>(types);
             Map<Variable, String> innerBoundVars = new HashMap<>(boundVarNames);
             for (var bind: newBinds) {
                 innerBoundVars.put(bind.var, "local_" + bind.var.name + "_closure");
+                newTypes.put(bind.var, VariableType.Polymorphic); // rebinds are always polymorphic
             }
-            return new LocalEnvironment(boundVars, innerBoundVars, freeVarsIndexMap);
+            return new LocalEnvironment(innerBoundVars, freeVarsIndexMap, types);
         }
 
         public String resolve(Variable f) {
@@ -661,16 +652,62 @@ public class Stg2ToJavaCompiler {
 //                source.addAll(List.of(e(pushA(boundVars.get(freeVar)))));
             }
 
-            return new StackSave(source, localEnvIdxs);
+            return new StackSave(source, new SavedOnStack(localEnvIdxs));
         }
 
         private class StackSave {
             public final List<String> source;
-            public final Map<Variable, Integer> localEnvIdxs;
+            public final SavedOnStack localEnvIdxs;
 
-            public StackSave(ArrayList<String> source, HashMap<Variable, Integer> localEnvIdxs) {
+            public StackSave(ArrayList<String> source, SavedOnStack localEnvIdxs) {
                 this.source = source;
                 this.localEnvIdxs = localEnvIdxs;
+            }
+
+        }
+
+        private class SavedOnStack {
+            public final Map<Variable, Integer> localEnvIdxs;
+
+            public SavedOnStack(HashMap<Variable, Integer> localEnvIdxs) {
+                this.localEnvIdxs = localEnvIdxs;
+            }
+
+            public StackPop stackPopAndReadNode(Variable[] args) {
+                var newNames = new HashMap<Variable, String>();
+                var source = new ArrayList<String>();
+
+                for(var entry: localEnvIdxs.entrySet()) {
+                    newNames.put(entry.getKey(), "local$" + entry.getKey().name);
+                    source.addAll(List.of(
+                            e("final Object " + newNames.get(entry.getKey()) + " = A[SpA - " + entry.getValue() + "];", "read " + entry.getKey().name)));
+                }
+                source.addAll(List.of(
+                        e(popA(localEnvIdxs.size()), "pop all passed")));
+
+
+                // read arguments from Node
+                for (int i = 0; i < args.length; i++) {
+                    var arg = args[i];
+                    newNames.put(arg, "passed$" + arg.name);
+
+                    source.addAll(List.of(list(
+                            e("final Object " + newNames.get(arg) + " = Node.nonPointerWords[" + i + "];", "read " + arg.name)
+                    )));
+                }
+
+                return new StackPop(source, newNames);
+            }
+
+        }
+
+        private class StackPop {
+            private final ArrayList<String> source;
+            private final LocalEnvironment environment;
+
+            public StackPop(ArrayList<String> source, HashMap<Variable, String> newNames) {
+                this.source = source;
+                this.environment = new LocalEnvironment(newNames, Collections.emptyMap(), LocalEnvironment.this.types);
             }
         }
     }
