@@ -15,9 +15,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Stg2ToJavaCompiler {
-    public static final String ENTRY_POINT = "main";
+    private static final String ENTRY_POINT = "main";
     private static final String MAIN_CLASS_NAME = "MainAppClass";
-    public static final String OFFSET = "    ";
+    private static final String OFFSET = "    ";
 
     private boolean debuggingEnabled = true;
 
@@ -27,7 +27,7 @@ public class Stg2ToJavaCompiler {
     private final Map<String, String> globalNames;
     private final Map<String, String> globalNamesInfo;
 
-    private final HashMap<LambdaForm, String> lfNames = new HashMap<>();
+    private final HashMap<Variable, String> lfNames = new HashMap<>();
     private int lfIter = 0;
 
     private final List<InnerDec> inners = new ArrayList<>();
@@ -49,6 +49,9 @@ public class Stg2ToJavaCompiler {
         this.graph = Arrays.stream(graph).collect(Collectors.toMap(b -> b.var.name, Function.identity()));
         this.globalNames = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "$" + n + "$_closure"));
         this.globalNamesInfo = Arrays.stream(graph).map(b -> b.var.name).collect(Collectors.toMap(Function.identity(), n -> "$" + n + "$_info"));
+
+        Bind main = this.graph.get("main");
+        ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
     }
 
     private String[] mainClassBody() {
@@ -70,13 +73,13 @@ public class Stg2ToJavaCompiler {
                         m("InfoTable(CodeLabel standardEntryCode)"), block(e("this.standardEntryCode = standardEntryCode;"))),
 
                 comment("Global infos and closures"),
-                d("public InfoTable MAIN_info = new InfoTable(this::MAIN_entry)"),
-                flatten(globalNonMainBinds().map(bind ->
-                d("public InfoTable " + globalNamesInfo.get(bind.var.name) + " = new InfoTable(this::"+ lfEntryCode(bind.lf) + ")"))),
+                flatten(globalBinds().map(bind -> list(
+                    d("public InfoTable " + globalNamesInfo.get(bind.var.name) + " = new InfoTable(this::"+ lfEntryCode(bind.var) + ")"),
+                    d("public Closure " + globalNames.get(bind.var.name) + " = new Closure(" + globalNamesInfo.get(bind.var.name) + ")")
+                        ))),
 
-                d("public Closure MAIN_closure = new Closure(MAIN_info)"),
-                flatten(globalNonMainBinds().map(bind ->
-                d("public Closure " + globalNames.get(bind.var.name) + " = new Closure(" + globalNamesInfo.get(bind.var.name) + ")"))),
+                comment("Global binds entry functions"),
+                flatten(globalBinds().map(this::globalBindsFunctions)),
 
                 comment("Constructors"),
                 flatten(constructorClass.keySet().stream().map(this::declareConstructor)), // declare all constructors
@@ -96,8 +99,6 @@ public class Stg2ToJavaCompiler {
                         d("CodeLabel jumpTo()")
                 ),
 
-                m("public CodeLabel MAIN_entry()"), compileMain(),
-
                 m("public CodeLabel MAIN_RETURN_INT()"), block(
                         debug(e(dump("MAIN RETURN integer: \" + ReturnInt +\""))),
                         e("result = new Integer(ReturnInt);"),
@@ -106,11 +107,9 @@ public class Stg2ToJavaCompiler {
 
                 m("public CodeLabel EVAL_MAIN()"), block(
                         debug(e(dump("EVAL_MAIN"))),
-                        e("Node = MAIN_closure;"),
+                        e("Node = $"+ ENTRY_POINT + "$_closure;"),
                         e("return ENTER(Node);")
                 ),
-
-                flatten(globalNonMainBinds().map(this::globalBindsFunctions)),
 
                 m("private static CodeLabel ENTER(Closure c)", "JUMP is implemented via returning of code labels"), block(
                         e("return c.infoPointer.standardEntryCode;")
@@ -153,6 +152,10 @@ public class Stg2ToJavaCompiler {
         );
     }
 
+    private Stream<Bind> globalBinds() {
+        return graph.values().stream();
+    }
+
     private String[] writeContinuationSource(CompiledCaseCont compiledCaseCont) {
         return list(
                 d("public CodeLabel[] " + compiledCaseCont.returnVectorName + " = " +
@@ -177,7 +180,7 @@ public class Stg2ToJavaCompiler {
                 d("InfoTable " + innerDec.infoPtr + " = new InfoTable(this::" + innerDec.codeEntry + ")"),
 
                 m("public CodeLabel " + innerDec.codeEntry + "()", innerDec.definition), block(
-                        debug(e(dump(sanitize(innerDec.definition)))),
+                        debug(e(dump("ENTER: " + sanitize(innerDec.definition)))),
                         innerDec.body
                 )
         );
@@ -186,8 +189,8 @@ public class Stg2ToJavaCompiler {
 
     private String[] globalBindsFunctions(Bind bind) {
         return list(
-                m("public CodeLabel " + lfEntryCode(bind.lf) + "()", bind.lf.toString()), block(
-                        debug(e(dump(sanitize(bind.lf.toString())))),
+                m("public CodeLabel " + lfEntryCode(bind.var) + "()", bind.lf.toString()), block(
+                        debug(e(dump("ENTER: " + sanitize(bind.lf.toString())))),
                         lambdaFormEntryBlock(bind.lf)
                 )
         );
@@ -394,9 +397,10 @@ public class Stg2ToJavaCompiler {
         var source = new ArrayList<String>();
 
         source.addAll(List.of(list(
-                comment("convention:"),
-                comment(" - Node contains the constructed closure"),
-                comment(" - the other arguments are on the stack!"))));
+                comment(
+                        "convention:",
+                        " - Node contains the constructed closure",
+                        " - the other arguments are on the stack!"))));
 
         var newNames = new HashMap<Variable, String>();
 
@@ -459,29 +463,12 @@ public class Stg2ToJavaCompiler {
                 e(dump("A = ...\" + Arrays.toString(IntStream.range(SpA-10, A.length).mapToObj(i -> A[i]).toArray(Object[]::new)) + \"")));
     }
 
-    private String lfEntryCode(LambdaForm lf) {
-        return lfNames.computeIfAbsent(lf, l -> "LF_" + (lfIter++) + "_entry");
+    private String lfEntryCode(Variable v) {
+        return lfNames.computeIfAbsent(v, var -> "$" + var + "$_entry");
     }
 
     private String[] flatten(Stream<String[]> vals) {
         return  vals.flatMap(Arrays::stream).toArray(String[]::new);
-    }
-
-    private Stream<Bind> globalNonMainBinds() {
-        return graph.values().stream()
-                .filter(b -> !b.var.name.equals(ENTRY_POINT));
-    }
-
-    private String[] compileMain() {
-        Bind main = graph.get("main");
-
-        ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
-
-        var source = lambdaFormEntryBlock(main.lf);
-
-        return block(
-                debug(e(dump("MAIN standard lfEntry."))),
-                source);
     }
 
     private void ensure(boolean b, String s) {
@@ -527,13 +514,9 @@ public class Stg2ToJavaCompiler {
     }
 
     static private String[] m(String s, String... comments) {
-        return comments.length == 0 ?
-                new String[]{"", s} :
-                Stream.of(
-                        Stream.of("", "/* "),
-                        Arrays.stream(comments),
-                        Stream.of(" */"),
-                        Stream.of(s)).flatMap(Function.identity()).toArray(String[]::new);
+        return Stream.of(
+                Arrays.stream(comment(comments)),
+                Stream.of(s)).flatMap(Function.identity()).toArray(String[]::new);
     }
 
     static private String[] e(String s, String... comment) {
@@ -541,11 +524,13 @@ public class Stg2ToJavaCompiler {
     }
 
     private static String inlineComment(String... comment) {
-        return comment.length == 0 ? "" : Arrays.stream(comment).collect(Collectors.joining(" ", "/* ", " */"));
+        return comment.length == 0 ? "" : Arrays.stream(comment).collect(Collectors.joining(" ", " /* ", " */"));
     }
 
     static private String[] c(String classDef, String... comments) {
-        return new String[]{"" + inlineComment(comments), classDef + " "};
+        return Stream.concat(
+                Arrays.stream(comment(comments)),
+                Stream.of(classDef + " ")).toArray(String[]::new);
     }
 
     static String[] block(String[]... elems) {
@@ -568,8 +553,11 @@ public class Stg2ToJavaCompiler {
         return MAIN_CLASS_NAME;
     }
 
-    private static String[] comment(String text) {
-        return new String[]{"/* ", text, " */"};
+    private static String[] comment(String... text) {
+        return text.length == 0 ? new String[]{} : Stream.concat(Stream.concat(
+                Stream.of("/* "),
+                Arrays.stream(text).map(s -> "   " + s)),
+                Stream.of(" */")).toArray(String[]::new);
     }
 
     public String compile() {
