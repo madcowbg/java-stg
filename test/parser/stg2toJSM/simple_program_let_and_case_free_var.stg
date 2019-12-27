@@ -1,0 +1,11 @@
+
+LET_IT_GO = {} \n {v2} -> let {
+    y = {v2} \n {} -> MkInt {v2}
+} in y {};
+
+answ_42 = {} \n {} -> 42#;
+
+casez = {} \n {val} -> case LET_IT_GO {42#} of {MkInt {v3} -> MkInt {v3}};
+
+# main = {} \n {} -> LET_IT_GO {42#};
+main = {} \n {} -> casez {45#};

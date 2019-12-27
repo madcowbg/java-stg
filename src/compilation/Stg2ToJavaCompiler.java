@@ -19,7 +19,7 @@ public class Stg2ToJavaCompiler {
 
     enum VariableType {Polymorphic, Primitive;}
 
-    enum ResolutionType {Bound, Global;}
+    enum ResolutionType {Bound, Global, Free}
 
     enum Stack {
         A("A", "SpA", "-"),
@@ -62,6 +62,8 @@ public class Stg2ToJavaCompiler {
             .flatMap(m -> m.entrySet().stream())
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
+    private Map<String, List<VariableType>> constructorArguments = Map.of("MkInt", List.of(VariableType.Primitive)); // TODO these could be declared
+
     private String src = null;
 
     public Stg2ToJavaCompiler(Bind[] graph, String description) {
@@ -94,7 +96,7 @@ public class Stg2ToJavaCompiler {
             declareInfoTable =
                     d("public InfoTable " + globalInfoName(bind.var) + " = new InfoTable(this::" + lfEntryCode(bind.var) + ")");
             declareClosure =
-                    d("public Closure " + globalClosureName(bind.var) + " = new Closure(" + globalInfoName(bind.var) + ")");
+                    d("public Closure " + globalClosureName(bind.var) + " = new Closure(" + globalInfoName(bind.var) + ", new Object[0], new Object[0])"); // no free vars!
         }
 
         private final String[] declareEntryFunction() {
@@ -152,10 +154,9 @@ public class Stg2ToJavaCompiler {
         return block(
                 c("class Closure"), block(
                         d("public final InfoTable infoPointer"),
-                        d("public Closure[] pointerWords"),      // FIXME typize?
+                        d("public Object[] pointerWords"),      // FIXME typize to Closure
                         d("public Object[] nonPointerWords"),  // FIXME typize?
-                        m("Closure(InfoTable infoPointer)"), block(e("this.infoPointer = infoPointer;")),
-                        m("Closure(InfoTable infoPointer, Closure[] pointerWords, Object[] nonPointerWords)"), block(
+                        m("Closure(InfoTable infoPointer, Object[] pointerWords, Object[] nonPointerWords)"), block(
                                 e("this.infoPointer = infoPointer;"),
                                 e("this.pointerWords = pointerWords;"),
                                 e("this.nonPointerWords = nonPointerWords;"))),
@@ -337,17 +338,24 @@ public class Stg2ToJavaCompiler {
                     compiledBinds.put(bind.var, inner);
                 }
 
+                // add to bound variables environment
+                LocalEnvironment inner = env.rebind(let.binds);
+
                 // allocate closures
                 for (var bind: let.binds) {
+                    var passedFreeVars = "new Object[] {"
+                            + Arrays.stream(bind.lf.freeVars).map(inner::resolve).map(r -> r.resolvedName).collect(Collectors.joining(", "))
+                            + "}"; // TODO split in primitive and algebraic
+
                     source.addAll(List.of(list(
-                            // TODO send bound variables via closure
-                            e("final Closure local_" + bind.var.name + "_closure  = new Closure(" + compiledBinds.get(bind.var).infoPtr + ");"),
+                            // TODO send free variables via closure
+                            e("final Closure local_" + bind.var.name + "_closure  = new Closure("
+                                    + compiledBinds.get(bind.var).infoPtr + ","
+                                    + passedFreeVars + ","
+                                    + "new Object[]{}" + " );"),
                             e("H[++Hp] = local_" + bind.var.name + "_closure;", "put on heap")
                     )));
                 }
-
-                // add to bound variables environment
-                LocalEnvironment inner = env.rebind(let.binds);
 
                 var letExpr = new CompiledExpression(let.expr, inner);
                 source.addAll(List.of(letExpr.body));
@@ -398,7 +406,7 @@ public class Stg2ToJavaCompiler {
                 source.addAll(List.of(list(
                         e("final Closure constructed = new Closure("
                                 + constructorTable(name) + ", "
-                                + "null, "
+                                + "new Object[]{}, "
                                 + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}")) + ");"))));
                 body = source.toArray(String[]::new);
 
@@ -677,7 +685,6 @@ public class Stg2ToJavaCompiler {
     }
 
     class StackOffset implements Address {
-
         private final String code;
 
         public StackOffset(Stack stack, int offset) {
@@ -690,21 +697,37 @@ public class Stg2ToJavaCompiler {
         }
     }
 
+    class NodeOffset implements Address {
+        private final String code;
+
+        public NodeOffset(boolean isPointer, int offset) {
+            this.code = "Node." + (isPointer ? "pointerWords" : "nonPointerWords") + "[" + offset + "]";
+        }
+
+        @Override
+        public String code() {
+            return code;
+        }
+    }
+
     public class LocalEnvironment {
         private final Map<Variable, String> localVarNames;
 
-        private final Map<Variable, Integer> freeVarsIndexMap;
-
+        private final Map<Variable, Address> freeVarsIndexMap;
         private final Map<Variable, Address> boundVarLocations;
 
         public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
             this(
                     new HashMap<>(),
-                    indexMap(freeVars),
-                    IntStream.range(0, boundVars.length).boxed().collect(Collectors.toMap(i -> boundVars[i], i -> new StackOffset(Stack.A, (1+i)))));
+                    indexMap(freeVars).entrySet().stream().collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> new NodeOffset(true /* fixme check if pointer*/, e.getValue()))),
+                    indexMap(boundVars).entrySet().stream().collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> new StackOffset(Stack.A /* fixme check if pointer*/, (1 + e.getValue())))));
         }
 
-        public LocalEnvironment(Map<Variable, String> localVarNames, Map<Variable, Integer> freeVarsIndexMap, Map<Variable, Address> boundVarLocations) {
+        public LocalEnvironment(Map<Variable, String> localVarNames, Map<Variable, Address> freeVarsIndexMap, Map<Variable, Address> boundVarLocations) {
             this.localVarNames = localVarNames;
             this.freeVarsIndexMap = freeVarsIndexMap;
             this.boundVarLocations = boundVarLocations;
@@ -720,8 +743,7 @@ public class Stg2ToJavaCompiler {
 
         public Resolution resolve(Variable f) {
             if (freeVarsIndexMap.containsKey(f)) {
-                // todo use free vars as well!
-                throw new CompileFailed("FIXME not implemented passing via free vars!!!" + f.toString());
+                return new Resolution(freeVarsIndexMap.get(f).code(), ResolutionType.Free, f);
             } else if (localVarNames.containsKey(f)) {
                 return new Resolution(localVarNames.get(f), ResolutionType.Bound, f);
             } else if (boundVarLocations.containsKey(f)) {

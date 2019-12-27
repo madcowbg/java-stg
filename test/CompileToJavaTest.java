@@ -25,6 +25,7 @@ public class CompileToJavaTest {
                 {"simple_app",lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
                 {"simple_program_let",lines("stg2ToJSM/simple_program_let.stg"), Integer.valueOf(42)},
                 {"simple_program_let_and_case",lines("stg2ToJSM/simple_program_let_and_case.stg"), new Object[]{"MkInt", Integer.valueOf(42)}},
+                {"let_and_case_free_var",lines("stg2ToJSM/simple_program_let_and_case_free_var.stg"), new Object[]{"MkInt", Integer.valueOf(42)}},
         };
     }
 
