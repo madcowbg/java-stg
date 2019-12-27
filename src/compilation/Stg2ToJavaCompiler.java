@@ -173,7 +173,7 @@ public class Stg2ToJavaCompiler {
 
                 m("public CodeLabel EVAL_MAIN()"), block(
                         debug(e(dump("EVAL_MAIN"))),
-                        e("Node = $"+ ENTRY_POINT + "$_closure;"),
+                        e("Node = $" + ENTRY_POINT + "$_closure;"),
                         e("return ENTER(Node);")
                 ),
 
@@ -205,7 +205,7 @@ public class Stg2ToJavaCompiler {
                         e(dump("Node = \" + Node + \"")),
                         e(dump("Hp = \" + Hp + \"")),
                         e(dump("H = \" + Arrays.toString(IntStream.range(0, Hp + 2).mapToObj(i -> H[i]).toArray(Object[]::new)) + \"")
-                )),
+                        )),
 
                 comment("Inner infos and codes"),
                 flatten(inners.stream().map(this::writeInfoAndCode)),
@@ -230,7 +230,7 @@ public class Stg2ToJavaCompiler {
     }
 
     private String[] declareConstructor(String name) {
-        return d("public InfoTable "+ constructorTable(name) + " = new InfoTable(this::cons_" + name + "_entry)", name);
+        return d("public InfoTable " + constructorTable(name) + " = new InfoTable(this::cons_" + name + "_entry)", name);
     }
 
     private String constructorTable(String name) {
@@ -258,29 +258,32 @@ public class Stg2ToJavaCompiler {
                 .collect(Collectors.toMap(i -> vars[i], Function.identity()));
     }
 
-    private class CompiledExpression {
-        private final String[] compiled;
+    interface CompiledArgument {
+        String[] pushToStack();
+    }
 
+    class CompiledLiteral implements CompiledArgument {
+        private final int value;
+
+        public CompiledLiteral(int value) {
+            this.value = value;
+        }
+
+        @Override
+        public String[] pushToStack() {
+            return e(pushA(String.valueOf(value)), "push literal argument"); // FIXME use stack B
+        }
+    }
+
+    private class CompiledExpression {
+
+        private final String[] compiled;
         CompiledExpression(Expr expr, LocalEnvironment env) {
             if (expr instanceof Literal) {
                 compiled = compileLiteralBlock((Literal) expr);
             } else if (expr instanceof Application) {
-                List<String> source = new ArrayList<>();
-                source.addAll(List.of(
-                        comment("Function application expression")
-                ));
-
                 var call = ((Application) expr);
-
-                for (int i = 0; i < call.args.length; i++) {
-                    if (call.args[i] instanceof Literal) {
-                        var lit = (Literal)call.args[i];
-                        source.addAll(List.of(
-                                e(pushA(String.valueOf(lit.value)), "add arguments")));
-                    } else {
-                        throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
-                    }
-                }
+                var args = Arrays.stream(call.args).map(this::compileArgument);
 
                 var resolution = env.resolve(call.f);
                 if (resolution.type == ResolutionType.Global) {
@@ -289,12 +292,15 @@ public class Stg2ToJavaCompiler {
                 }
                 String call_f_name = resolution.resolvedName;
 
-                // call to non-built-in function
-                source.addAll(List.of(list(
+                compiled = list(
+                        comment("Function application expression"),
+                        // push arguments to appropriate stacks
+                        flatten(args.map(CompiledArgument::pushToStack)),
+
+                        // call to non-built-in function
                         e("Node = (Closure) " + call_f_name + ";", "entering the closure"),
                         e("return ENTER(Node);")
-                )));
-                compiled = source.toArray(String[]::new);
+                );
             } else if (expr instanceof Let) {
                 List<String> source = new ArrayList<>();
                 source.addAll(List.of(
@@ -357,7 +363,7 @@ public class Stg2ToJavaCompiler {
                             if (atom instanceof Literal) {
                                 return String.valueOf(((Literal) atom).value);
                             } else if (atom instanceof Variable) {
-                                return env.resolve((Variable)atom).resolvedName;
+                                return env.resolve((Variable) atom).resolvedName;
                             } else {
                                 throw new RuntimeException("unrecognized atom: " + atom);
                             }
@@ -369,13 +375,22 @@ public class Stg2ToJavaCompiler {
                         e("final Closure constructed = new Closure("
                                 + constructorTable(name) + ", "
                                 + "null, "
-                                + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}"))+ ");" ),
+                                + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}")) + ");"),
                         e("Node = constructed;"),
                         e("return ENTER(Node);")
                 )));
                 compiled = source.toArray(String[]::new);
             } else {
                 throw new CompileFailed("FIXME not implemented: !!! " + expr.toString());
+            }
+        }
+
+        private CompiledArgument compileArgument(Atom a) {
+            if (a instanceof Literal) {
+                return new CompiledLiteral(((Literal) a).value);
+            } else {
+                // FIXME implement
+                throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
             }
         }
     }
@@ -389,7 +404,7 @@ public class Stg2ToJavaCompiler {
 
     private static String[] doOnShortB(String[] doIt) {
         return list(
-            e("if (SpB < 0)", "FIXME compare to stack head"), block(doIt)
+                e("if (SpB < 0)", "FIXME compare to stack head"), block(doIt)
         );
     }
 
@@ -412,7 +427,7 @@ public class Stg2ToJavaCompiler {
             var alternatives = allConstructors.stream().collect(Collectors.toMap(
                     Function.identity(),
                     c -> algAlts.stream().filter(a -> a.cons.cons.equals(c)).findFirst()));
-            ensure (alternatives.values().stream().allMatch(Optional::isPresent), "Some alternatives are undefined!");
+            ensure(alternatives.values().stream().allMatch(Optional::isPresent), "Some alternatives are undefined!");
 
             var alternativesCode = alternatives.entrySet().stream().collect(Collectors.toMap(
                     Map.Entry::getKey,
@@ -472,7 +487,7 @@ public class Stg2ToJavaCompiler {
     }
 
     private String[] flatten(Stream<String[]> vals) {
-        return  vals.flatMap(Arrays::stream).toArray(String[]::new);
+        return vals.flatMap(Arrays::stream).toArray(String[]::new);
     }
 
     private void ensure(boolean b, String s) {
@@ -579,7 +594,7 @@ public class Stg2ToJavaCompiler {
 
     public String withLNs() {
         var lines = compile().split("\n");
-        return IntStream.range(0, lines.length).mapToObj(i -> String.format("%03d\t%s", i+1, lines[i])).collect(Collectors.joining("\n", "", ""));
+        return IntStream.range(0, lines.length).mapToObj(i -> String.format("%03d\t%s", i + 1, lines[i])).collect(Collectors.joining("\n", "", ""));
     }
 
     private class InnerDec {
@@ -606,7 +621,7 @@ public class Stg2ToJavaCompiler {
         private final Map<String, String> alternativesDesc;
 
         private CompiledCaseCont(String classEnum, List<String> allConstructors, Map<String, String[]> alternativesSource, Map<String, Optional<AlgAlt>> alternativesOriginalSource) {
-            var prefix = classEnum + "$" + (nextCont ++) + "$" ;
+            var prefix = classEnum + "$" + (nextCont++) + "$";
             Function<String, String> continuationCodeFun = c -> prefix + c + "_cont";
             returnVectorName = prefix + "RetVec";
             this.returnVector = allConstructors.stream().map(continuationCodeFun).toArray(String[]::new);
@@ -622,7 +637,7 @@ public class Stg2ToJavaCompiler {
 
     public LocalEnvironment environmentFor(LambdaForm lf) {
         return new LocalEnvironment(lf.boundVars, lf.freeVars);
-}
+    }
 
     public class LocalEnvironment {
         private final Map<Variable, String> boundVarNames;
@@ -654,7 +669,7 @@ public class Stg2ToJavaCompiler {
 
         public LocalEnvironment rebind(Bind[] newBinds) {
             Map<Variable, String> innerBoundVars = new HashMap<>(boundVarNames);
-            for (var bind: newBinds) {
+            for (var bind : newBinds) {
                 innerBoundVars.put(bind.var, "local_" + bind.var.name + "_closure");
             }
             return new LocalEnvironment(innerBoundVars, freeVarsIndexMap);
@@ -678,12 +693,12 @@ public class Stg2ToJavaCompiler {
             // TODO optimize - remove those vars that won't be needed for evaluation...
 
             var localEnvIdxs = new HashMap<Variable, Integer>();
-            for(var boundVar: boundVarNames.keySet()) {
+            for (var boundVar : boundVarNames.keySet()) {
                 localEnvIdxs.put(boundVar, localEnvIdxs.size());
                 source.addAll(List.of(e(pushA(boundVarNames.get(boundVar)))));
             }
 
-            for(var freeVar: freeVarsIndexMap.keySet()) {
+            for (var freeVar : freeVarsIndexMap.keySet()) {
                 ensure(false, "free var pushing to stack not implemented!!!");
 
 //                localEnvIdxs.put(freeVar, localEnvIdxs.size());
@@ -715,7 +730,7 @@ public class Stg2ToJavaCompiler {
                 var newNames = new HashMap<Variable, String>();
                 var source = new ArrayList<String>();
 
-                for(var entry: localEnvIdxs.entrySet()) {
+                for (var entry : localEnvIdxs.entrySet()) {
                     newNames.put(entry.getKey(), "local$" + entry.getKey().name);
                     source.addAll(List.of(
                             e("final Object " + newNames.get(entry.getKey()) + " = A[SpA - " + entry.getValue() + "];", "read " + entry.getKey().name)));
