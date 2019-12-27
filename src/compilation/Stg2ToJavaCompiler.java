@@ -103,7 +103,7 @@ public class Stg2ToJavaCompiler {
                     localEnv.popBoundVarsCode,
 
                     // evaluate the expression
-                    codeToEvaluateExpression(lf.expr, localEnv).toArray(String[]::new)
+                    new CompiledExpression(lf.expr, localEnv).compiled
             );
         }
     }
@@ -244,117 +244,122 @@ public class Stg2ToJavaCompiler {
                 .collect(Collectors.toMap(i -> vars[i], Function.identity()));
     }
 
-    private List<String> codeToEvaluateExpression(Expr expr, LocalEnvironment env) {
-        List<String> source = new ArrayList<>();
+    private class CompiledExpression {
+        private final String[] compiled;
 
-        if (expr instanceof Literal) {
-            source.addAll(List.of(list(
-                    e("ReturnInt = " + ((Literal) expr).value + ";", "value to be returned"),
-                    doOnShortB(e("return this::MAIN_RETURN_INT;")),
-                    e("return (CodeLabel) B[SpB--];"))));
-        } else if (expr instanceof Application) {
-            source.addAll(List.of(
-                    comment("Function application expression")
-            ));
+        CompiledExpression(Expr expr, LocalEnvironment env) {
+            List<String> source = new ArrayList<>();
 
-            var call = ((Application) expr);
-
-            for (int i = 0; i < call.args.length; i++) {
-                if (call.args[i] instanceof Literal) {
-                    var lit = (Literal)call.args[i];
-                    source.addAll(List.of(
-                            e(pushA(String.valueOf(lit.value)), "add arguments")));
-                } else {
-                    throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
-                }
-            }
-
-            String call_f_name = env.resolve(call.f);
-
-            // call to non-built-in function
-            source.addAll(List.of(list(
-                    e("Node = (Closure) " + call_f_name + ";", "entering the closure"),
-                    e("return ENTER(Node);")
-            )));
-
-        } else if (expr instanceof Let) {
-            source.addAll(List.of(
-                    comment("Evaluating LET expression")
-            ));
-            var let = (Let) expr;
-            if (let.isRec) {
-                throw new CompileFailed("FIXME not implemented recursive: !!! " + expr.toString());
-            }
-
-            // prepare code to be used in evaluation
-            var compiledBinds = new HashMap<Variable, InnerDec>();
-            for (var bind: let.binds) {
-                var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf).source, bind.lf.toString());
-                inners.add(inner);
-                compiledBinds.put(bind.var, inner);
-            }
-
-            // allocate closures
-            for (var bind: let.binds) {
+            if (expr instanceof Literal) {
                 source.addAll(List.of(list(
-                        // TODO send bound variables via closure
-                        e("final Closure local_" + bind.var.name + "_closure  = new Closure(" + compiledBinds.get(bind.var).infoPtr + ");"),
-                        e("H[++Hp] = local_" + bind.var.name + "_closure;", "put on heap")
+                        e("ReturnInt = " + ((Literal) expr).value + ";", "value to be returned"),
+                        doOnShortB(e("return this::MAIN_RETURN_INT;")),
+                        e("return (CodeLabel) B[SpB--];"))));
+            } else if (expr instanceof Application) {
+                source.addAll(List.of(
+                        comment("Function application expression")
+                ));
+
+                var call = ((Application) expr);
+
+                for (int i = 0; i < call.args.length; i++) {
+                    if (call.args[i] instanceof Literal) {
+                        var lit = (Literal)call.args[i];
+                        source.addAll(List.of(
+                                e(pushA(String.valueOf(lit.value)), "add arguments")));
+                    } else {
+                        throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
+                    }
+                }
+
+                String call_f_name = env.resolve(call.f);
+
+                // call to non-built-in function
+                source.addAll(List.of(list(
+                        e("Node = (Closure) " + call_f_name + ";", "entering the closure"),
+                        e("return ENTER(Node);")
                 )));
+
+            } else if (expr instanceof Let) {
+                source.addAll(List.of(
+                        comment("Evaluating LET expression")
+                ));
+                var let = (Let) expr;
+                if (let.isRec) {
+                    throw new CompileFailed("FIXME not implemented recursive: !!! " + expr.toString());
+                }
+
+                // prepare code to be used in evaluation
+                var compiledBinds = new HashMap<Variable, InnerDec>();
+                for (var bind: let.binds) {
+                    var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf).source, bind.lf.toString());
+                    inners.add(inner);
+                    compiledBinds.put(bind.var, inner);
+                }
+
+                // allocate closures
+                for (var bind: let.binds) {
+                    source.addAll(List.of(list(
+                            // TODO send bound variables via closure
+                            e("final Closure local_" + bind.var.name + "_closure  = new Closure(" + compiledBinds.get(bind.var).infoPtr + ");"),
+                            e("H[++Hp] = local_" + bind.var.name + "_closure;", "put on heap")
+                    )));
+                }
+
+                // add to bound variables environment
+                LocalEnvironment inner = env.rebind(let.binds);
+
+                source.addAll(List.of(new CompiledExpression(let.expr, inner).compiled));
+            } else if (expr instanceof Case) {
+                source.addAll(List.of(
+                        comment("Evaluating CASE expression")
+                ));
+
+                source.addAll(List.of(
+                        comment("Saving local environment...")));
+                // save free and bound vars
+
+                var stackSave = env.saveToStack();
+                source.addAll(stackSave.source);
+
+                var _case = (Case) expr;
+                var compiledCaseCont = compileCaseCont(_case, stackSave.localEnvIdxs);
+                continuations.add(compiledCaseCont);
+
+                source.addAll(List.of(list(
+                        e("B[++SpB] = " + compiledCaseCont.returnVectorName + ";", "Push continuation return vector"),
+                        new CompiledExpression(_case.expr, env).compiled
+                )));
+            } else if (expr instanceof Cons) {
+                var cons = (Cons<Atom>) expr;
+                var name = cons.cons;
+                var args = Arrays.stream(cons.args).map(
+                        atom -> {
+                            if (atom instanceof Literal) {
+                                return String.valueOf(((Literal) atom).value);
+                            } else if (atom instanceof Variable) {
+                                return env.resolve((Variable)atom);
+                            } else {
+                                throw new RuntimeException("unrecognized atom: " + atom);
+                            }
+                        }
+                ).collect(Collectors.toList());
+
+                source.addAll(List.of(list(
+                        e("final Closure constructed = new Closure("
+                                + constructorTable(name) + ", "
+                                + "null, "
+                                + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}"))+ ");" ),
+                        e("Node = constructed;"),
+                        e("return ENTER(Node);")
+                )));
+            } else {
+                throw new CompileFailed("FIXME not implemented: !!! " + expr.toString());
             }
 
-            // add to bound variables environment
-            LocalEnvironment inner = env.rebind(let.binds);
-
-            source.addAll(codeToEvaluateExpression(let.expr, inner));
-        } else if (expr instanceof Case) {
-            source.addAll(List.of(
-                    comment("Evaluating CASE expression")
-            ));
-
-            source.addAll(List.of(
-                    comment("Saving local environment...")));
-            // save free and bound vars
-
-            var stackSave = env.saveToStack();
-            source.addAll(stackSave.source);
-
-            var _case = (Case)expr;
-            var compiledCaseCont = compileCaseCont(_case, stackSave.localEnvIdxs);
-            continuations.add(compiledCaseCont);
-
-            source.addAll(List.of(list(
-                    e("B[++SpB] = " + compiledCaseCont.returnVectorName + ";", "Push continuation return vector"),
-                    codeToEvaluateExpression(_case.expr, env).toArray(String[]::new)
-            )));
-        } else if (expr instanceof Cons) {
-            var cons = (Cons<Atom>)expr;
-            var name = cons.cons;
-            var args = Arrays.stream(cons.args).map(
-                    atom -> {
-                        if (atom instanceof Literal) {
-                            return String.valueOf(((Literal) atom).value);
-                        } else if (atom instanceof Variable) {
-                            return env.resolve((Variable)atom);
-                        } else {
-                            throw new RuntimeException("unrecognized atom: " + atom);
-                        }
-                    }
-            ).collect(Collectors.toList());
-
-            source.addAll(List.of(list(
-                    e("final Closure constructed = new Closure("
-                            + constructorTable(name) + ", "
-                            + "null, "
-                            + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}"))+ ");" ),
-                    e("Node = constructed;"),
-                    e("return ENTER(Node);")
-            )));
-        } else {
-            throw new CompileFailed("FIXME not implemented: !!! " + expr.toString());
+            compiled = source.toArray(String[]::new);
         }
 
-        return source;
     }
 
     private String[] doOnShortB(String[] doIt) {
@@ -400,20 +405,16 @@ public class Stg2ToJavaCompiler {
 
         var source = new ArrayList<String>();
 
-        source.addAll(List.of(list(
+        var popStackToLocal = localEnvIdxsOnStack.stackPopAndReadNode(alternative.cons.args);
+        return list(
                 comment(
                         "convention:",
                         " - Node contains the constructed closure",
-                        " - the other arguments are on the stack!"))));
+                        " - the other arguments are on the stack!"),
 
-        var pop = localEnvIdxsOnStack.stackPopAndReadNode(alternative.cons.args);
-
-        // pop from stack
-        source.addAll(pop.source);
-
-        source.addAll(codeToEvaluateExpression(alternative.expr, pop.environment));
-
-        return source.toArray(String[]::new);
+                // pop from stack
+                popStackToLocal.source.toArray(String[]::new),
+                new CompiledExpression(alternative.expr, popStackToLocal.environment).compiled);
     }
 
     private <T, R> List<R> select(T[] vals, Class<R> clazz) {
