@@ -15,6 +15,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Stg2ToJavaCompiler {
+    enum VariableType {Polymorphic, Primitive}
+
     private static final String ENTRY_POINT = "main";
     private static final String MAIN_CLASS_NAME = "MainAppClass";
     private static final String OFFSET = "    ";
@@ -54,6 +56,58 @@ public class Stg2ToJavaCompiler {
         ensure(main.lf.boundVars.length == 0, "main can't have bound variables");
     }
 
+    private class CompiledBind {
+
+        private final String[] declareInfoTable;
+        private final String[] declareClosure;
+        private final String[] declareEntryFunction;
+
+        public CompiledBind(Bind bind) {
+            declareInfoTable =
+                    d("public InfoTable " + globalNamesInfo.get(bind.var.name) + " = new InfoTable(this::"+ lfEntryCode(bind.var) + ")");
+            declareClosure =
+                    d("public Closure " + globalNames.get(bind.var.name) + " = new Closure(" + globalNamesInfo.get(bind.var.name) + ")");
+
+            var compiledLF = new CompiledLambdaForm(bind.lf);
+
+            // TODO figure out the type!
+            declareEntryFunction =
+                list(
+                        m("public CodeLabel " + lfEntryCode(bind.var) + "()", bind.lf.toString()), block(
+                                debug(e(dump("ENTER: " + sanitize(bind.lf.toString())))),
+                                compiledLF.source
+                        ));
+        }
+
+        public String[] toCode() {
+            return list(
+                    declareInfoTable,
+                    declareClosure,
+                    declareEntryFunction
+            );
+        }
+    }
+
+    private class CompiledLambdaForm {
+        private final String[] source;
+
+        CompiledLambdaForm(LambdaForm lf) {
+            var localEnv = environmentFor(lf);
+
+            this.source = list(
+                    // TODO argument satisfaction check
+                    // TODO stack overflow check
+                    // TODO heap overflow check
+
+                    // pop bound vars
+                    localEnv.popBoundVarsCode,
+
+                    // evaluate the expression
+                    codeToEvaluateExpression(lf.expr, localEnv).toArray(String[]::new)
+            );
+        }
+    }
+
     private String[] mainClassBody() {
         return block(
                 c("class Closure"), block(
@@ -72,14 +126,8 @@ public class Stg2ToJavaCompiler {
                         d("public CodeLabel scavengeCode"),
                         m("InfoTable(CodeLabel standardEntryCode)"), block(e("this.standardEntryCode = standardEntryCode;"))),
 
-                comment("Global infos and closures"),
-                flatten(globalBinds().map(bind -> list(
-                    d("public InfoTable " + globalNamesInfo.get(bind.var.name) + " = new InfoTable(this::"+ lfEntryCode(bind.var) + ")"),
-                    d("public Closure " + globalNames.get(bind.var.name) + " = new Closure(" + globalNamesInfo.get(bind.var.name) + ")")
-                        ))),
-
-                comment("Global binds entry functions"),
-                flatten(globalBinds().map(this::globalBindsFunctions)),
+                comment("Global infos, closures and entry functions"),
+                flatten(globalBinds().map(CompiledBind::new).map(CompiledBind::toCode)),
 
                 comment("Constructors"),
                 flatten(constructorClass.keySet().stream().map(this::declareConstructor)), // declare all constructors
@@ -187,35 +235,8 @@ public class Stg2ToJavaCompiler {
 
     }
 
-    private String[] globalBindsFunctions(Bind bind) {
-        return list(
-                m("public CodeLabel " + lfEntryCode(bind.var) + "()", bind.lf.toString()), block(
-                        debug(e(dump("ENTER: " + sanitize(bind.lf.toString())))),
-                        lambdaFormEntryBlock(bind.lf)
-                )
-        );
-    }
-
     private static String sanitize(String toString) {
         return toString.replace("\\n", "\\\\n");
-    }
-
-    private String[] lambdaFormEntryBlock(LambdaForm lf) {
-        var localEnv = environmentFor(lf);
-
-        List<String> source = new ArrayList<>();
-
-
-        // TODO argument satisfaction check
-        // TODO stack overflow check
-        // TODO heap overflow check
-
-        source.addAll(List.of(
-                localEnv.popBoundVarsCode));
-
-        source.addAll(codeToEvaluateExpression(lf.expr, localEnv));
-
-        return source.toArray(String[]::new);
     }
 
     private static Map<Variable, Integer> indexMap(Variable[] vars) {
@@ -268,7 +289,7 @@ public class Stg2ToJavaCompiler {
             // prepare code to be used in evaluation
             var compiledBinds = new HashMap<Variable, InnerDec>();
             for (var bind: let.binds) {
-                var inner = new InnerDec(bind.var.name, lambdaFormEntryBlock(bind.lf), bind.lf.toString());
+                var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf).source, bind.lf.toString());
                 inners.add(inner);
                 compiledBinds.put(bind.var, inner);
             }
@@ -573,24 +594,18 @@ public class Stg2ToJavaCompiler {
         }
     }
 
-    enum VariableType {Polymorphic, Primitive;}
-
     public LocalEnvironment environmentFor(LambdaForm lf) {
-        return new LocalEnvironment(lf.boundVars, lf.freeVars, new HashMap<>());
-    }
+        return new LocalEnvironment(lf.boundVars, lf.freeVars);
+}
 
     public class LocalEnvironment {
         private final Map<Variable, String> boundVarNames;
 
         private final Map<Variable, Integer> freeVarsIndexMap;
 
-        private final Map<Variable, VariableType> types;
-
         private final String[] popBoundVarsCode;
 
-        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars, Map<Variable, VariableType> types) {
-            this.types = types;
-
+        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
             this.freeVarsIndexMap = indexMap(freeVars);
 
             this.boundVarNames = Arrays.stream(boundVars).collect(
@@ -605,21 +620,18 @@ public class Stg2ToJavaCompiler {
                     e(popA(nvars), "adjust popped stack all!"));
         }
 
-        public LocalEnvironment(Map<Variable, String> innerBoundVars, Map<Variable, Integer> freeVarsIndexMap, Map<Variable, VariableType> types) {
-            this.types = types;
+        public LocalEnvironment(Map<Variable, String> innerBoundVars, Map<Variable, Integer> freeVarsIndexMap) {
             this.popBoundVarsCode = null; // FIXME this is not updated!
             this.boundVarNames = innerBoundVars;
             this.freeVarsIndexMap = freeVarsIndexMap;
         }
 
         public LocalEnvironment rebind(Bind[] newBinds) {
-            var newTypes = new HashMap<>(types);
             Map<Variable, String> innerBoundVars = new HashMap<>(boundVarNames);
             for (var bind: newBinds) {
                 innerBoundVars.put(bind.var, "local_" + bind.var.name + "_closure");
-                newTypes.put(bind.var, VariableType.Polymorphic); // rebinds are always polymorphic
             }
-            return new LocalEnvironment(innerBoundVars, freeVarsIndexMap, types);
+            return new LocalEnvironment(innerBoundVars, freeVarsIndexMap);
         }
 
         public String resolve(Variable f) {
@@ -707,7 +719,7 @@ public class Stg2ToJavaCompiler {
 
             public StackPop(ArrayList<String> source, HashMap<Variable, String> newNames) {
                 this.source = source;
-                this.environment = new LocalEnvironment(newNames, Collections.emptyMap(), LocalEnvironment.this.types);
+                this.environment = new LocalEnvironment(newNames, Collections.emptyMap());
             }
         }
     }
