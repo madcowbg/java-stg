@@ -116,11 +116,6 @@ public class Stg2ToJavaCompiler {
 
             // pop bound vars
             int nvars = lf.boundVars.length;
-            var popBoundVarsCode = list(
-                    indexMap(lf.boundVars).entrySet().stream()
-                            .map(e -> e("final Object " + localEnv.boundVarNames.get(e.getKey()) + " = " + readA(e.getValue()) + ";"))
-                            .flatMap(Arrays::stream).toArray(String[]::new),
-                    e(popA(nvars), "adjust popped stack all!"));
 
             var compiledExpr = new CompiledExpression(lf.expr, localEnv);;
             this.body = list(
@@ -129,7 +124,7 @@ public class Stg2ToJavaCompiler {
                     // TODO heap overflow check
 
                     // pop bound vars
-                    popBoundVarsCode,
+                    e(popA(nvars), "pop all arguments FIXME use proper stacks!"),
 
                     // evaluate the expression
                     compiledExpr.body
@@ -662,36 +657,41 @@ public class Stg2ToJavaCompiler {
     }
 
     public class LocalEnvironment {
-        private final Map<Variable, String> boundVarNames;
+        private final Map<Variable, String> localVarNames;
 
         private final Map<Variable, Integer> freeVarsIndexMap;
 
-        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
-            this.freeVarsIndexMap = indexMap(freeVars);
+        private final Map<Variable, String> boundVarLocations;
 
-            this.boundVarNames = Arrays.stream(boundVars).collect(
-                    Collectors.toMap(Function.identity(), name -> "LOCAL_" + name));
+        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
+            this(
+                    new HashMap<>(),
+                    indexMap(freeVars),
+                    IntStream.range(0, boundVars.length).boxed().collect(Collectors.toMap(i -> boundVars[i], i -> "A[SpA - " + (1+i) + "]")));
         }
 
-        public LocalEnvironment(Map<Variable, String> innerBoundVars, Map<Variable, Integer> freeVarsIndexMap) {
-            this.boundVarNames = innerBoundVars;
+        public LocalEnvironment(Map<Variable, String> localVarNames, Map<Variable, Integer> freeVarsIndexMap, Map<Variable, String> boundVarLocations) {
+            this.localVarNames = localVarNames;
             this.freeVarsIndexMap = freeVarsIndexMap;
+            this.boundVarLocations = boundVarLocations;
         }
 
         public LocalEnvironment rebind(Bind[] newBinds) {
-            Map<Variable, String> innerBoundVars = new HashMap<>(boundVarNames);
+            Map<Variable, String> localVarNames = new HashMap<>();
             for (var bind : newBinds) {
-                innerBoundVars.put(bind.var, "local_" + bind.var.name + "_closure");
+                localVarNames.put(bind.var, "local_" + bind.var.name + "_closure");
             }
-            return new LocalEnvironment(innerBoundVars, freeVarsIndexMap);
+            return new LocalEnvironment(localVarNames, freeVarsIndexMap, boundVarLocations);
         }
 
         public Resolution resolve(Variable f) {
             if (freeVarsIndexMap.containsKey(f)) {
                 // todo use free vars as well!
                 throw new CompileFailed("FIXME not implemented passing via free vars!!!" + f.toString());
-            } else if (boundVarNames.containsKey(f)) {
-                return new Resolution(boundVarNames.get(f), ResolutionType.Bound, f);
+            } else if (localVarNames.containsKey(f)) {
+                return new Resolution(localVarNames.get(f), ResolutionType.Bound, f);
+            } else if (boundVarLocations.containsKey(f)) {
+                return new Resolution(boundVarLocations.get(f), ResolutionType.Bound, f);
             } else {
                 ensure(globalBinds.containsKey(f.name), "Can't find variable " + f + " in any environment!");
                 return new Resolution(globalClosureName(f), ResolutionType.Global, f);
@@ -702,18 +702,24 @@ public class Stg2ToJavaCompiler {
             var source = new ArrayList<String>();
 
             // TODO optimize - remove those vars that won't be needed for evaluation...
+            var varsToSave = Stream.of(localVarNames.keySet(), boundVarLocations.keySet())
+                    .flatMap(Collection::stream).distinct().sorted().toArray(Variable[]::new);
 
             var localEnvIdxs = new HashMap<Variable, Integer>();
-            for (var boundVar : boundVarNames.keySet()) {
-                localEnvIdxs.put(boundVar, localEnvIdxs.size());
-                source.addAll(List.of(e(pushA(boundVarNames.get(boundVar)))));
+            Map<Variable, String> tempVarNames = IntStream.range(0, varsToSave.length).boxed().collect(Collectors.toMap(i -> varsToSave[i], (i -> "temp$" + i)));
+
+            // save to local variables
+            source.addAll(List.of(flatten(tempVarNames.entrySet().stream().map(e ->
+                    e("Object " + e.getValue() + " = " + resolve(e.getKey()).resolvedName + ";")))));
+
+            // push to stack
+            for (var var: varsToSave) {
+                localEnvIdxs.put(var, localEnvIdxs.size());
+                source.addAll(List.of(e(pushA(tempVarNames.get(var)))));
             }
 
             for (var freeVar : freeVarsIndexMap.keySet()) {
                 ensure(false, "free var pushing to stack not implemented!!!");
-
-//                localEnvIdxs.put(freeVar, localEnvIdxs.size());
-//                source.addAll(List.of(e(pushA(boundVars.get(freeVar)))));
             }
 
             return new StackSave(source, new SavedOnStack(localEnvIdxs));
@@ -771,7 +777,7 @@ public class Stg2ToJavaCompiler {
 
             public StackPop(ArrayList<String> source, HashMap<Variable, String> newNames) {
                 this.source = source;
-                this.environment = new LocalEnvironment(newNames, Collections.emptyMap());
+                this.environment = new LocalEnvironment(newNames, Collections.emptyMap(), Collections.emptyMap());
             }
         }
 
