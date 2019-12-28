@@ -5,7 +5,7 @@ LET_IT_GO = {hds} \n {v2} -> let {
 
 answ_42 = {} \n {} -> 42#;
 
-casez = {} \n {val} -> case LET_IT_GO {5#} of {MkInt {v3} -> MkInt {val}};
+casez = {} \n {val} -> case LET_IT_GO {LET_IT_GO} of {MkInt {v3} -> MkInt {val}};
 
 # main = {} \n {} -> LET_IT_GO {5#};
 main = {} \n {} -> casez {42#};

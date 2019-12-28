@@ -8,4 +8,4 @@ answ_42 = {} \n {} -> 42#;
 casez = {} \n {val} -> case LET_IT_GO {42#} of {MkInt {v3} -> MkInt {v3}};
 
 # main = {} \n {} -> LET_IT_GO {42#};
-main = {} \n {} -> casez {45#};
+main = {} \n {} -> casez {main};

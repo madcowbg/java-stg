@@ -1,8 +1,8 @@
 
 LET_IT_GO = {hds} \n {v2} -> let {
     y = {v2} \n {v3} -> 42#
-} in y {-3#};
+} in y {y};
 
 answ_42 = {} \n {} -> 42#;
 
-main = {} \n {} -> LET_IT_GO {5#};
+main = {} \n {} -> LET_IT_GO {answ_42};

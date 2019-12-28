@@ -13,6 +13,8 @@ import tea.stg2.parser.ParsingFailed;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
+import java.util.Objects;
 
 import static parser.StringParserTest.lines;
 
@@ -25,7 +27,7 @@ public class CompileToJavaTest {
                 {"simple_app",lines("stg2ToJSM/simple_app.stg"), Integer.valueOf(42)},
                 {"simple_program_let",lines("stg2ToJSM/simple_program_let.stg"), Integer.valueOf(42)},
                 {"simple_program_let_and_case",lines("stg2ToJSM/simple_program_let_and_case.stg"), new Object[]{"MkInt", Integer.valueOf(42)}},
-                {"let_and_case_free_var",lines("stg2ToJSM/simple_program_let_and_case_free_var.stg"), new Object[]{"MkInt", Integer.valueOf(42)}},
+                {"simple_program_let_and_case_free_var",lines("stg2ToJSM/simple_program_let_and_case_free_var.stg"), new Object[]{"MkInt", Integer.valueOf(42)}},
         };
     }
 
@@ -56,8 +58,11 @@ public class CompileToJavaTest {
         var app = cls.getConstructor().newInstance();
         var result = cls.getMethod("eval").invoke(app);
 
-        Assert.assertEquals(expectedResult, result);
+        Assert.assertEquals(expectedResult, result, dump(expectedResult) + " != " + dump(result));
     }
 
+    private static String dump(Object a) {
+        return a instanceof Object[] ? Arrays.toString((Object[]) a) : Objects.toString(a);
+    }
 }
 

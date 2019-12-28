@@ -1,15 +1,18 @@
 package compilation;
 
+import jas.Var;
 import tea.core.CompileFailed;
 import tea.stg2.parser.Bind;
 import tea.stg2.parser.LambdaForm;
 import tea.stg2.parser.alt.AlgAlt;
+import tea.stg2.parser.alt.Alt;
 import tea.stg2.parser.alt.DefaultAlt;
 import tea.stg2.parser.alt.PrimAlt;
 import tea.stg2.parser.expr.*;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -17,7 +20,7 @@ import java.util.stream.Stream;
 public class Stg2ToJavaCompiler {
 
 
-    enum VariableType {Polymorphic, Primitive;}
+    enum VariableType {Polymorphic, Primitive, Unrestricted;}
 
     enum ResolutionType {Bound, Global, Free}
 
@@ -34,7 +37,9 @@ public class Stg2ToJavaCompiler {
             this.ptr = ptr;
             this.dir = dir;
         }
-    };
+    }
+
+    ;
 
     private static final String ENTRY_POINT = "main";
     private static final String MAIN_CLASS_NAME = "MainAppClass";
@@ -100,7 +105,7 @@ public class Stg2ToJavaCompiler {
         }
 
         private final String[] declareEntryFunction() {
-            var compiledLF = new CompiledLambdaForm(bind.lf);
+            var compiledLF = new CompiledLambdaForm(bind.lf, bind.var.name);
 
             // TODO figure out the type!
             return list(
@@ -124,29 +129,176 @@ public class Stg2ToJavaCompiler {
         }
     }
 
+    private class PassingConvention {
+
+        private final Variable[] pointerVars;
+        private final Variable[] nonPointerVars;
+
+        PassingConvention(Variable[] vars, Predicate<Variable> isPrimitive) {
+            pointerVars = Arrays.stream(vars).filter(Predicate.not(isPrimitive)).toArray(Variable[]::new);
+            nonPointerVars = Arrays.stream(vars).filter(isPrimitive).toArray(Variable[]::new);
+        }
+
+        public boolean isPrimitive(Variable f) {
+            return List.of(nonPointerVars).contains(f);
+        }
+
+        @Deprecated
+        public int size() {
+            return pointerVars.length + nonPointerVars.length;
+        }
+    }
+
+    private class PassedArguments {
+        private final PassingConvention convention;
+        private final Map<Variable, Address> addresses;
+
+        PassedArguments(PassingConvention convention, Function<Integer, Address> onPointer, Function<Integer, Address> onNonPointer) {
+            this.convention = convention;
+            this.addresses = Stream.of(
+                    indexMap(convention.pointerVars).entrySet().stream()
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> onPointer.apply(e.getValue()))).entrySet(),
+                    indexMap(convention.nonPointerVars).entrySet().stream()
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> onNonPointer.apply(e.getValue()))).entrySet())
+                    .flatMap(Set::stream)
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        }
+
+        public boolean has(Variable f) {
+            return addresses.containsKey(f);
+        }
+
+        public Address address(Variable f) {
+            assert addresses.containsKey(f);
+            return addresses.get(f);
+        }
+
+        public boolean isEmpty() {
+            return addresses.isEmpty();
+        }
+
+        public Set<Variable> variables() {
+            return addresses.keySet();
+        }
+
+        public boolean isPrimitive(Variable f) {
+            return convention.isPrimitive(f);
+        }
+    }
+
     private class CompiledLambdaForm {
         private final String[] body;
         private final String[] jump;
 
-        CompiledLambdaForm(LambdaForm lf) {
-            var localEnv = environmentFor(lf);
+        private final PassingConvention boundVars;
+        private final PassingConvention freeVars;
 
-            // pop bound vars
-            int nvars = lf.boundVars.length;
+        CompiledLambdaForm(LambdaForm lf, String lambdaDebugName) {
+            Predicate<Variable> isPrimitiveInExpression = var -> typeOf(var, lf.expr).equals(VariableType.Primitive);
+            boundVars = new PassingConvention(lf.boundVars, isPrimitiveInExpression);
+            freeVars = new PassingConvention(lf.freeVars, isPrimitiveInExpression);
 
-            var compiledExpr = new CompiledExpression(lf.expr, localEnv);;
+            var localEnv = new LocalEnvironment(boundVars, freeVars);
+            var compiledExpr = new CompiledExpression(lf.expr, localEnv);
+
             this.body = list(
-                    // TODO argument satisfaction check
+                    // TODO make partial application work
+                    e("if (SpA + " + boundVars.pointerVars.length + " > A.length)", "not enough pointer parameters..."), block(
+                            e("throw new RuntimeException(\"" + lambdaDebugName + " needs " + boundVars.pointerVars.length + " pointer params, got \" + (A.length - SpA) + \"!\");")
+                    ),
+                    e("if (SpB - " + boundVars.nonPointerVars.length + " < -1)", "not enough non-pointer parameters..."), block(
+                            e("throw new RuntimeException(\"" + lambdaDebugName + " needs " + boundVars.nonPointerVars.length + " non-pointer params, got \" + (SpB) + \"!\");")
+                    ),
+
                     // TODO stack overflow check
                     // TODO heap overflow check
 
                     // pop bound vars
-                    e(popA(nvars), "pop all arguments FIXME use proper stacks!"),
+                    e(popA(boundVars.pointerVars.length), "pop all pointer arguments"),
+                    e(popB(boundVars.nonPointerVars.length), "pop all non-pointer arguments!"),
 
                     // evaluate the expression
                     compiledExpr.body
             );
             this.jump = compiledExpr.jump;
+        }
+    }
+
+    private VariableType typeOf(Variable var, Expr expr) {
+        if (expr instanceof Literal) {
+            return VariableType.Unrestricted;
+        } else if (expr instanceof Application) {
+            var app = (Application) expr;
+            if (var.equals(app.f)) {
+                return VariableType.Polymorphic;
+            } else if (List.of(app.args).contains(var)) {
+                // TODO check type of function maybe? globals can be resolved...
+                return VariableType.Unrestricted;
+            } else {
+                return VariableType.Unrestricted;
+            }
+        } else if (expr instanceof Case) {
+            var _case = (Case) expr;
+            var inExpr = typeOf(var, _case.expr);
+            if (inExpr != VariableType.Unrestricted) {
+                return inExpr;
+            }
+            var altRest = Arrays.stream(_case.alts).map(alt -> restrictionByAlternative(var, alt))
+                    .filter(Predicate.not(VariableType.Unrestricted::equals))
+                    .distinct().collect(Collectors.toList());
+
+            if (altRest.size() == 0) {
+                return VariableType.Unrestricted;
+            }
+
+            ensure(altRest.size() == 1, "" + var.name + " is used both primitive and polymorphic in " + expr);
+
+            return altRest.get(0);
+        } else if (expr instanceof Cons) {
+            var cons = (Cons<Atom>) expr;
+            var expectedArgTypes = constructorArguments.get(cons.cons);
+            var usedAtIdx = List.of(cons.args).indexOf(var);
+            if (usedAtIdx == -1) {
+                return VariableType.Unrestricted;
+            }
+            return expectedArgTypes.get(usedAtIdx);
+        } else if (expr instanceof Let) {
+            var let = (Let) expr;
+            if (let.isRec) {
+                throw new RuntimeException("FIXME implement recursive let: " + expr);
+            }
+
+            var declRestr = Arrays.stream(let.binds)
+                    .map(b -> Arrays.asList(b.lf.freeVars).contains(var) ? typeOf(var, b.lf.expr) : VariableType.Unrestricted)
+                    .filter(Predicate.not(VariableType.Unrestricted::equals))
+                    .distinct().collect(Collectors.toList());
+
+            if (declRestr.size() == 1) {
+                return declRestr.get(0);
+            }
+            ensure(declRestr.size() == 0, var.name + " is used both primitive and polymorphic in " + expr);
+
+            if (Arrays.stream(let.binds).map(b -> b.var).noneMatch(var::equals)) {
+                return typeOf(var, let.expr);
+            } else {
+                // ... is hidden by declaration
+                return VariableType.Unrestricted;
+            }
+        } else {
+            throw new RuntimeException("FIXME implement type of: " + expr);
+        }
+    }
+
+    private VariableType restrictionByAlternative(Variable var, Alt alt) {
+        if (alt instanceof AlgAlt) {
+            var aalt = (AlgAlt) alt;
+            if (List.of(aalt.cons.args).contains(var)) {
+                // masked by alternative
+                return VariableType.Unrestricted;
+            }
+            return typeOf(var, aalt.expr);
+        } else {
+            throw new RuntimeException("FIXME implement alternative type of: " + alt);
         }
     }
 
@@ -272,6 +424,10 @@ public class Stg2ToJavaCompiler {
 
     interface CompiledArgument {
         String[] pushToStack();
+
+        boolean isPrimitive();
+
+        String address();
     }
 
     class CompiledLiteral implements CompiledArgument {
@@ -283,7 +439,43 @@ public class Stg2ToJavaCompiler {
 
         @Override
         public String[] pushToStack() {
-            return e(pushA(String.valueOf(value)), "push literal argument"); // FIXME use stack B
+            return e(pushB(String.valueOf(value)), "push literal argument");
+        }
+
+        @Override
+        public boolean isPrimitive() {
+            return true;
+        }
+
+        @Override
+        public String address() {
+            return String.valueOf(value);
+        }
+    }
+
+    class CompiledAddress implements CompiledArgument {
+
+        private final boolean isPrimitive;
+        private final String addr;
+
+        public CompiledAddress(LocalEnvironment.Resolution resolve) {
+            this.isPrimitive = resolve.isPrimitive;
+            this.addr = resolve.resolvedName;
+        }
+
+        @Override
+        public String[] pushToStack() {
+            return e((isPrimitive ? pushB(addr) : pushA(addr)));
+        }
+
+        @Override
+        public boolean isPrimitive() {
+            return isPrimitive;
+        }
+
+        @Override
+        public String address() {
+            return addr;
         }
     }
 
@@ -300,7 +492,7 @@ public class Stg2ToJavaCompiler {
                         e("return (CodeLabel) B[SpB--];");
             } else if (expr instanceof Application) {
                 var call = ((Application) expr);
-                var args = Arrays.stream(call.args).map(this::compileArgument);
+                var args = Arrays.stream(call.args).map(compileArgument(env));
 
                 var resolution = env.resolve(call.f);
                 if (resolution.type == ResolutionType.Global) {
@@ -332,8 +524,8 @@ public class Stg2ToJavaCompiler {
 
                 // prepare code to be used in evaluation
                 var compiledBinds = new HashMap<Variable, InnerDec>();
-                for (var bind: let.binds) {
-                    var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf), bind.lf.toString());
+                for (var bind : let.binds) {
+                    var inner = new InnerDec(bind.var.name, new CompiledLambdaForm(bind.lf, bind.var.name), bind.lf.toString());
                     inners.add(inner);
                     compiledBinds.put(bind.var, inner);
                 }
@@ -342,17 +534,26 @@ public class Stg2ToJavaCompiler {
                 LocalEnvironment inner = env.rebind(let.binds);
 
                 // allocate closures
-                for (var bind: let.binds) {
-                    var passedFreeVars = "new Object[] {"
-                            + Arrays.stream(bind.lf.freeVars).map(inner::resolve).map(r -> r.resolvedName).collect(Collectors.joining(", "))
-                            + "}"; // TODO split in primitive and algebraic
+                for (var bind : let.binds) {
+                    var compiledBind = compiledBinds.get(bind.var);
+
+                    var argumentValues = Arrays.stream(bind.lf.freeVars).map(inner::resolve).collect(Collectors.toList());
+
+                    var callConvention = compiledBind.compiledLF.boundVars;
+                    validateConvention(callConvention, argumentValues);
+
+                    var pointerArgs = argumentValues.stream().filter(r -> !r.isPrimitive).map(r -> r.resolvedName).collect(Collectors.toSet());
+                    var primitiveArgs = argumentValues.stream().filter(r -> r.isPrimitive).map(r -> r.resolvedName).collect(Collectors.toSet());
+
+                    var passedPointerVars = "new Object[] {" + String.join(", ", pointerArgs) + "}";
+                    var passedPrimitiveVars = "new Object[] {" + String.join(", ", primitiveArgs) + "}";
 
                     source.addAll(List.of(list(
                             // TODO send free variables via closure
                             e("final Closure local_" + bind.var.name + "_closure  = new Closure("
-                                    + compiledBinds.get(bind.var).infoPtr + ","
-                                    + passedFreeVars + ","
-                                    + "new Object[]{}" + " );"),
+                                    + compiledBind.infoPtr + ","
+                                    + passedPointerVars + ","
+                                    + passedPrimitiveVars + " );"),
                             e("H[++Hp] = local_" + bind.var.name + "_closure;", "put on heap")
                     )));
                 }
@@ -376,7 +577,7 @@ public class Stg2ToJavaCompiler {
                 source.addAll(stackSave.source);
 
                 var _case = (Case) expr;
-                var compiledCaseCont = compileCaseCont(_case, stackSave.localEnvIdxs);
+                var compiledCaseCont = compileCaseCont(_case, stackSave.stackConvention);
                 continuations.add(compiledCaseCont);
 
                 var caseExpr = new CompiledExpression(_case.expr, env);
@@ -390,24 +591,18 @@ public class Stg2ToJavaCompiler {
             } else if (expr instanceof Cons) {
                 var cons = (Cons<Atom>) expr;
                 var name = cons.cons;
-                var args = Arrays.stream(cons.args).map(
-                        atom -> {
-                            if (atom instanceof Literal) {
-                                return String.valueOf(((Literal) atom).value);
-                            } else if (atom instanceof Variable) {
-                                return env.resolve((Variable) atom).resolvedName;
-                            } else {
-                                throw new RuntimeException("unrecognized atom: " + atom);
-                            }
-                        }
-                ).collect(Collectors.toList());
+
+                var resolvedArgs = Arrays.stream(cons.args).map(compileArgument(env)).collect(Collectors.toList());
+
+                var pointerArgs = resolvedArgs.stream().filter(Predicate.not(CompiledArgument::isPrimitive)).map(CompiledArgument::address).collect(Collectors.toList());
+                var primitiveArgs = resolvedArgs.stream().filter(CompiledArgument::isPrimitive).map(CompiledArgument::address).collect(Collectors.toList());
 
                 List<String> source = new ArrayList<>();
                 source.addAll(List.of(list(
                         e("final Closure constructed = new Closure("
                                 + constructorTable(name) + ", "
-                                + "new Object[]{}, "
-                                + args.stream().collect(Collectors.joining(", ", "new Object[]{", "}")) + ");"))));
+                                + "new Object[]{" + String.join(", ", pointerArgs) +"}, "
+                                + "new Object[]{" + String.join(", ", primitiveArgs) +"});"))));
                 body = source.toArray(String[]::new);
 
                 jump = list(
@@ -419,14 +614,22 @@ public class Stg2ToJavaCompiler {
             }
         }
 
-        private CompiledArgument compileArgument(Atom a) {
-            if (a instanceof Literal) {
-                return new CompiledLiteral(((Literal) a).value);
-            } else {
-                // FIXME implement
-                throw new CompileFailed("FIXME not implemented arguments that are not literals!!!");
-            }
+        private Function<Atom, CompiledArgument> compileArgument(LocalEnvironment env) {
+            return (Atom a) -> {
+                if (a instanceof Literal) {
+                    return new CompiledLiteral(((Literal) a).value);
+                } else if (a instanceof Variable) {
+                    return new CompiledAddress(env.resolve((Variable)a));
+                } else {
+                    throw new CompileFailed("FIXME not implemented argument: " + a.toString());
+                }
+            };
         }
+
+    }
+
+    private void validateConvention(PassingConvention callConvention, List<LocalEnvironment.Resolution> argumentValues) {
+        // adas
     }
 
     private static String[] doOnShortB(String[] doIt) {
@@ -435,7 +638,7 @@ public class Stg2ToJavaCompiler {
         );
     }
 
-    private CompiledCaseCont compileCaseCont(Case _case, LocalEnvironment.SavedOnStack localEnvIdxsOnStack) {
+    private CompiledCaseCont compileCaseCont(Case _case, PassingConvention stackConvention) {
         if (_case.alts[0] instanceof AlgAlt) {
             var default_ = select(_case.alts, DefaultAlt.class);
             var algAlts = select(_case.alts, AlgAlt.class);
@@ -456,11 +659,11 @@ public class Stg2ToJavaCompiler {
                     c -> algAlts.stream().filter(a -> a.cons.cons.equals(c)).findFirst()));
             ensure(alternatives.values().stream().allMatch(Optional::isPresent), "Some alternatives are undefined!");
 
-            var alternativesCode = alternatives.entrySet().stream().collect(Collectors.toMap(
+            var alternativesSource = alternatives.entrySet().stream().collect(Collectors.toMap(
                     Map.Entry::getKey,
-                    e -> compileAlternative(e.getKey(), e.getValue().get(), localEnvIdxsOnStack)));
+                    e -> compileAlternative(e.getKey(), e.getValue().get(), stackConvention)));
 
-            return new CompiledCaseCont(classEnum, allConstructors, alternativesCode, alternatives);
+            return new CompiledCaseCont(classEnum, allConstructors, alternativesSource, alternatives);
         } else if (_case.alts[1] instanceof PrimAlt) {
             throw new CompileFailed("FIXME not implemented primitive alternatives: !!! " + _case.toString());
         } else {
@@ -468,9 +671,11 @@ public class Stg2ToJavaCompiler {
         }
     }
 
-    private String[] compileAlternative(String classConstructor, AlgAlt alternative, LocalEnvironment.SavedOnStack localEnvIdxsOnStack) {
-        var popStackToLocal = localEnvIdxsOnStack.stackPopAndReadNode(alternative.cons.args);
-        var altExp = new CompiledExpression(alternative.expr, popStackToLocal.environment);
+    private String[] compileAlternative(String classConstructor, AlgAlt alternative, PassingConvention stackConvention) {
+        var nodePassedConvention = new PassingConvention(alternative.cons.args, i -> typeOf(i, alternative.expr).equals(VariableType.Primitive));
+
+        var environment = new LocalEnvironment(stackConvention, nodePassedConvention);
+        var altExp = new CompiledExpression(alternative.expr, environment);
 
         return list(
                 comment(
@@ -479,7 +684,9 @@ public class Stg2ToJavaCompiler {
                         " - the other arguments are on the stack!"),
 
                 // pop from stack
-                popStackToLocal.source.toArray(String[]::new),
+                e(popA(stackConvention.pointerVars.length), "pop all passed pointers"),
+                e(popB(stackConvention.nonPointerVars.length), "pop all passed non-pointers"),
+
                 altExp.body,
                 altExp.jump);
     }
@@ -489,7 +696,11 @@ public class Stg2ToJavaCompiler {
     }
 
     private String pushB(String value) {
-        return "B[++SpB] = " + value;
+        return "B[++SpB] = " + value + ";";
+    }
+
+    private String popB(int nvars) {
+        return "SpB = SpB - " + nvars + ";";
     }
 
     private String pushA(String value) {
@@ -676,10 +887,6 @@ public class Stg2ToJavaCompiler {
         }
     }
 
-    public LocalEnvironment environmentFor(LambdaForm lf) {
-        return new LocalEnvironment(lf.boundVars, lf.freeVars);
-    }
-
     interface Address {
         String code();
     }
@@ -713,21 +920,26 @@ public class Stg2ToJavaCompiler {
     public class LocalEnvironment {
         private final Map<Variable, String> localVarNames;
 
-        private final Map<Variable, Address> freeVarsIndexMap;
-        private final Map<Variable, Address> boundVarLocations;
+        private PassedArguments freeVarsIndexMap;
+        private PassedArguments boundVarLocations;
 
-        public LocalEnvironment(Variable[] boundVars, Variable[] freeVars) {
+//        private final Map<Variable, Address> freeVarsIndexMap;
+//        private final Map<Variable, Address> boundVarLocations;
+
+        public LocalEnvironment(PassingConvention boundVars, PassingConvention freeVars) {
             this(
                     new HashMap<>(),
-                    indexMap(freeVars).entrySet().stream().collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            e -> new NodeOffset(true /* fixme check if pointer*/, e.getValue()))),
-                    indexMap(boundVars).entrySet().stream().collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            e -> new StackOffset(Stack.A /* fixme check if pointer*/, (1 + e.getValue())))));
+                    new PassedArguments(
+                            freeVars,
+                            i -> new NodeOffset(true, i),
+                            i -> new NodeOffset(false, i)),
+                    new PassedArguments(
+                            boundVars,
+                            i -> new StackOffset(Stack.A, 1 + i),
+                            i -> new StackOffset(Stack.B, 1 + i)));
         }
 
-        public LocalEnvironment(Map<Variable, String> localVarNames, Map<Variable, Address> freeVarsIndexMap, Map<Variable, Address> boundVarLocations) {
+        public LocalEnvironment(Map<Variable, String> localVarNames, PassedArguments freeVarsIndexMap, PassedArguments boundVarLocations) {
             this.localVarNames = localVarNames;
             this.freeVarsIndexMap = freeVarsIndexMap;
             this.boundVarLocations = boundVarLocations;
@@ -742,15 +954,15 @@ public class Stg2ToJavaCompiler {
         }
 
         public Resolution resolve(Variable f) {
-            if (freeVarsIndexMap.containsKey(f)) {
-                return new Resolution(freeVarsIndexMap.get(f).code(), ResolutionType.Free, f);
+            if (freeVarsIndexMap.has(f)) {
+                return new Resolution(freeVarsIndexMap.address(f).code(), ResolutionType.Free, f, freeVarsIndexMap.isPrimitive(f));
             } else if (localVarNames.containsKey(f)) {
-                return new Resolution(localVarNames.get(f), ResolutionType.Bound, f);
-            } else if (boundVarLocations.containsKey(f)) {
-                return new Resolution(boundVarLocations.get(f).code(), ResolutionType.Bound, f);
+                return new Resolution(localVarNames.get(f), ResolutionType.Bound, f, false /* LET does dynamic binding only...*/);
+            } else if (boundVarLocations.has(f)) {
+                return new Resolution(boundVarLocations.address(f).code(), ResolutionType.Bound, f, boundVarLocations.isPrimitive(f));
             } else {
                 ensure(globalBinds.containsKey(f.name), "Can't find variable " + f + " in any environment!");
-                return new Resolution(globalClosureName(f), ResolutionType.Global, f);
+                return new Resolution(globalClosureName(f), ResolutionType.Global, f, false);
             }
         }
 
@@ -758,95 +970,53 @@ public class Stg2ToJavaCompiler {
             var source = new ArrayList<String>();
 
             // TODO optimize - remove those vars that won't be needed for evaluation...
-            var varsToSave = Stream.of(localVarNames.keySet(), boundVarLocations.keySet())
+            var varsToSave = Stream.of(localVarNames.keySet(), boundVarLocations.variables())
                     .flatMap(Collection::stream).distinct().sorted().toArray(Variable[]::new);
 
-            var localEnvIdxs = new HashMap<Variable, Integer>();
             Map<Variable, String> tempVarNames = IntStream.range(0, varsToSave.length).boxed().collect(Collectors.toMap(i -> varsToSave[i], (i -> "temp$" + i)));
 
             // save to local variables
             source.addAll(List.of(flatten(tempVarNames.entrySet().stream().map(e ->
                     e("Object " + e.getValue() + " = " + resolve(e.getKey()).resolvedName + ";")))));
 
+            var stackConvention = new PassingConvention(tempVarNames.keySet().toArray(Variable[]::new), var -> resolve(var).isPrimitive);
+
             // push to stack
-            for (var var: varsToSave) {
-                localEnvIdxs.put(var, localEnvIdxs.size());
+            for (var var: stackConvention.pointerVars) {
                 source.addAll(List.of(e(pushA(tempVarNames.get(var)))));
             }
 
-            for (var freeVar : freeVarsIndexMap.keySet()) {
-                ensure(false, "free var pushing to stack not implemented!!!");
+            for (var var : stackConvention.nonPointerVars) {
+                source.addAll(List.of(e(pushB(tempVarNames.get(var)))));
             }
 
-            return new StackSave(source, new SavedOnStack(localEnvIdxs));
+            ensure(freeVarsIndexMap.isEmpty(), "free var pushing to stack not implemented!!!");
+
+            return new StackSave(source, stackConvention);
         }
 
         private class StackSave {
             public final List<String> source;
-            public final SavedOnStack localEnvIdxs;
+            public final PassingConvention stackConvention;
 
-            public StackSave(ArrayList<String> source, SavedOnStack localEnvIdxs) {
+            public StackSave(ArrayList<String> source, PassingConvention stackConvention) {
                 this.source = source;
-                this.localEnvIdxs = localEnvIdxs;
+                this.stackConvention = stackConvention;
             }
 
         }
-
-        private class SavedOnStack {
-            public final Map<Variable, Integer> localEnvIdxs;
-
-            public SavedOnStack(HashMap<Variable, Integer> localEnvIdxs) {
-                this.localEnvIdxs = localEnvIdxs;
-            }
-
-            public StackPop stackPopAndReadNode(Variable[] args) {
-                var newNames = new HashMap<Variable, String>();
-                var source = new ArrayList<String>();
-
-                for (var entry : localEnvIdxs.entrySet()) {
-                    newNames.put(entry.getKey(), "local$" + entry.getKey().name);
-                    source.addAll(List.of(
-                            e("final Object " + newNames.get(entry.getKey()) + " = A[SpA - " + entry.getValue() + "];", "read " + entry.getKey().name)));
-                }
-                source.addAll(List.of(
-                        e(popA(localEnvIdxs.size()), "pop all passed")));
-
-
-                // read arguments from Node
-                for (int i = 0; i < args.length; i++) {
-                    var arg = args[i];
-                    newNames.put(arg, "passed$" + arg.name);
-
-                    source.addAll(List.of(list(
-                            e("final Object " + newNames.get(arg) + " = Node.nonPointerWords[" + i + "];", "read " + arg.name)
-                    )));
-                }
-
-                return new StackPop(source, newNames);
-            }
-
-        }
-
-        private class StackPop {
-            private final ArrayList<String> source;
-            private final LocalEnvironment environment;
-
-            public StackPop(ArrayList<String> source, HashMap<Variable, String> newNames) {
-                this.source = source;
-                this.environment = new LocalEnvironment(newNames, Collections.emptyMap(), Collections.emptyMap());
-            }
-        }
-
 
         private class Resolution {
             private final String resolvedName;
             private final ResolutionType type;
             private final Variable var;
+            private final boolean isPrimitive;
 
-            public Resolution(String resolvedName, ResolutionType type, Variable var) {
+            public Resolution(String resolvedName, ResolutionType type, Variable var, boolean isPrimitive) {
                 this.resolvedName = resolvedName;
                 this.type = type;
                 this.var = var;
+                this.isPrimitive = isPrimitive;
             }
         }
     }
