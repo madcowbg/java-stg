@@ -497,7 +497,7 @@ public class Stg2ToJavaCompiler {
                 var resolution = env.resolve(call.f);
                 if (resolution.type == ResolutionType.Global) {
                     // we know what the function is, provide argument types as requested
-                    // TODO implement
+                    // TODO implement type checks
                 }
                 String call_f_name = resolution.resolvedName;
 
@@ -571,6 +571,8 @@ public class Stg2ToJavaCompiler {
 
                 source.addAll(List.of(
                         comment("Saving local environment...")));
+                // TODO implement type checks
+
                 // save free and bound vars
 
                 var stackSave = env.saveToStack();
@@ -593,6 +595,8 @@ public class Stg2ToJavaCompiler {
                 var name = cons.cons;
 
                 var resolvedArgs = Arrays.stream(cons.args).map(compileArgument(env)).collect(Collectors.toList());
+
+                // TODO implement passed arguments type checks
 
                 var pointerArgs = resolvedArgs.stream().filter(Predicate.not(CompiledArgument::isPrimitive)).map(CompiledArgument::address).collect(Collectors.toList());
                 var primitiveArgs = resolvedArgs.stream().filter(CompiledArgument::isPrimitive).map(CompiledArgument::address).collect(Collectors.toList());
