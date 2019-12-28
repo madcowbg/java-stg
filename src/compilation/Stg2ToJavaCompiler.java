@@ -1,6 +1,5 @@
 package compilation;
 
-import jas.Var;
 import tea.core.CompileFailed;
 import tea.stg2.parser.Bind;
 import tea.stg2.parser.LambdaForm;
@@ -422,12 +421,33 @@ public class Stg2ToJavaCompiler {
                 .collect(Collectors.toMap(i -> vars[i], Function.identity()));
     }
 
-    interface CompiledArgument {
-        String[] pushToStack();
+    class LocalVariable {
+        private final String[] creationCode;
+        private final String[] pushCode;
+        private final String address;
 
+        public LocalVariable(String[] creationCode, String address, String[] pushCode) {
+            this.pushCode = pushCode;
+            assert pushCode.length > 0;
+            this.creationCode = creationCode;
+            this.address = address;
+        }
+
+        public String[] read() {
+            return creationCode;
+        }
+
+        public String[] pushToStack() {
+            return pushCode;
+        }
+    }
+
+    interface CompiledArgument {
         boolean isPrimitive();
 
         String address();
+
+        LocalVariable saveToLocal();
     }
 
     class CompiledLiteral implements CompiledArgument {
@@ -435,11 +455,6 @@ public class Stg2ToJavaCompiler {
 
         public CompiledLiteral(int value) {
             this.value = value;
-        }
-
-        @Override
-        public String[] pushToStack() {
-            return e(pushB(String.valueOf(value)), "push literal argument");
         }
 
         @Override
@@ -451,6 +466,11 @@ public class Stg2ToJavaCompiler {
         public String address() {
             return String.valueOf(value);
         }
+
+        @Override
+        public LocalVariable saveToLocal() {
+            return new LocalVariable(new String[0], String.valueOf(value), e(pushB(String.valueOf(value))));
+        }
     }
 
     class CompiledAddress implements CompiledArgument {
@@ -458,14 +478,12 @@ public class Stg2ToJavaCompiler {
         private final boolean isPrimitive;
         private final String addr;
 
-        public CompiledAddress(LocalEnvironment.Resolution resolve) {
+        private final Variable var;
+
+        public CompiledAddress(LocalEnvironment.Resolution resolve, Variable var) {
             this.isPrimitive = resolve.isPrimitive;
             this.addr = resolve.resolvedName;
-        }
-
-        @Override
-        public String[] pushToStack() {
-            return e((isPrimitive ? pushB(addr) : pushA(addr)));
+            this.var = var;
         }
 
         @Override
@@ -476,6 +494,17 @@ public class Stg2ToJavaCompiler {
         @Override
         public String address() {
             return addr;
+        }
+
+        @Override
+        public LocalVariable saveToLocal() {
+            var javaType = isPrimitive ? "int" : "Closure";
+
+            return new LocalVariable(
+                    e("final " + javaType + " " + var.name + "_local = (" + javaType + ") " + addr + ";"),
+                    var.name,
+                    e((isPrimitive ? pushB(addr) : pushA(addr))));
+
         }
     }
 
@@ -492,19 +521,23 @@ public class Stg2ToJavaCompiler {
                         e("return (CodeLabel) B[SpB--];");
             } else if (expr instanceof Application) {
                 var call = ((Application) expr);
-                var args = Arrays.stream(call.args).map(compileArgument(env));
+                var args = Arrays.stream(call.args).map(compileArgument(env)).map(CompiledArgument::saveToLocal).collect(Collectors.toList());
 
                 var resolution = env.resolve(call.f);
                 if (resolution.type == ResolutionType.Global) {
                     // we know what the function is, provide argument types as requested
                     // TODO implement type checks
                 }
+
                 String call_f_name = resolution.resolvedName;
 
                 body = list(
                         comment("Function application expression"),
+                        // pop variables to be used later
+                        flatten(args.stream().map(LocalVariable::read)),
+
                         // push arguments to appropriate stacks
-                        flatten(args.map(CompiledArgument::pushToStack))
+                        flatten(args.stream().map(LocalVariable::pushToStack))
                 );
 
                 jump = list(
@@ -549,7 +582,6 @@ public class Stg2ToJavaCompiler {
                     var passedPrimitiveVars = "new Object[] {" + String.join(", ", primitiveArgs) + "}";
 
                     source.addAll(List.of(list(
-                            // TODO send free variables via closure
                             e("final Closure local_" + bind.var.name + "_closure  = new Closure("
                                     + compiledBind.infoPtr + ","
                                     + passedPointerVars + ","
@@ -597,6 +629,7 @@ public class Stg2ToJavaCompiler {
                 var resolvedArgs = Arrays.stream(cons.args).map(compileArgument(env)).collect(Collectors.toList());
 
                 // TODO implement passed arguments type checks
+                // validateConvention(callConvention, resolvedArgs);
 
                 var pointerArgs = resolvedArgs.stream().filter(Predicate.not(CompiledArgument::isPrimitive)).map(CompiledArgument::address).collect(Collectors.toList());
                 var primitiveArgs = resolvedArgs.stream().filter(CompiledArgument::isPrimitive).map(CompiledArgument::address).collect(Collectors.toList());
@@ -623,7 +656,7 @@ public class Stg2ToJavaCompiler {
                 if (a instanceof Literal) {
                     return new CompiledLiteral(((Literal) a).value);
                 } else if (a instanceof Variable) {
-                    return new CompiledAddress(env.resolve((Variable)a));
+                    return new CompiledAddress(env.resolve((Variable)a), (Variable)a);
                 } else {
                     throw new CompileFailed("FIXME not implemented argument: " + a.toString());
                 }
