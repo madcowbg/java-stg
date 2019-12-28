@@ -357,7 +357,7 @@ public class Stg2ToJavaCompiler {
                 ),
 
                 comment("Stacks"),
-                d("private Object[] A = new Object[1000]; "), // FIXME implement dynamic allocation and GC
+                d("private Closure[] A = new Closure[1000]; "), // FIXME implement dynamic allocation and GC
                 d("private Object[] B = new Object[1000];"), // FIXME implement dynamic allocation
                 d("private Closure[] H = new Closure[1000];"), // FIXME implement dynamic allocation
 
@@ -975,9 +975,10 @@ public class Stg2ToJavaCompiler {
 
             Map<Variable, String> tempVarNames = IntStream.range(0, varsToSave.length).boxed().collect(Collectors.toMap(i -> varsToSave[i], (i -> "temp$" + i)));
 
+            Function<Variable, String> javaType = var -> resolve(var).isPrimitive ? "int" : "Closure";
             // save to local variables
             source.addAll(List.of(flatten(tempVarNames.entrySet().stream().map(e ->
-                    e("Object " + e.getValue() + " = " + resolve(e.getKey()).resolvedName + ";")))));
+                    e(javaType.apply(e.getKey()) + " " + e.getValue() + " = (" + javaType.apply(e.getKey()) + ") " + resolve(e.getKey()).resolvedName + ";")))));
 
             var stackConvention = new PassingConvention(tempVarNames.keySet().toArray(Variable[]::new), var -> resolve(var).isPrimitive);
 
